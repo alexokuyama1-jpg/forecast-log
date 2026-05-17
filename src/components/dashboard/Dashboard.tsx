@@ -1,166 +1,188 @@
 import { useMemo, useState } from "react";
-import data from "@/data/painel.json";
+import data from "@/data/forecast.json";
 import KpiCard from "./KpiCard";
 import {
-  ResponsiveContainer, BarChart, Bar, AreaChart, Area, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ComposedChart,
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, ComposedChart,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Truck, Warehouse, TrendingUp, AlertTriangle, Users, Activity, Package, Clock } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Package, Building2, Target, AlertTriangle, Activity } from "lucide-react";
 
-type Shipment = { date: string; destination: string; shift: string | null; status: string | null; late: string | null };
-type VolumeRow = { month: string; year: number; realizado: number | null; budget: number | null; forecast: number | null; unit: string | null };
-type Occ = { date: string; cap_ref: number | null; occ_ref: number | null; pct_ref: number | null; cap_sec: number | null; occ_sec: number | null; pct_sec: number | null };
-type Loss = { year: number | null; month: number | null; pacote: string | null; tipo: string | null; tipo1: string | null; mont: number | null; budget: number | null; manual: number | null };
-type Fte = { activity: string | null; shift: string | null; role: string | null; situation: string | null; sector: string | null; tipo: string | null; qtd: number };
-
-const D = data as unknown as {
-  shipments: Shipment[]; volume: VolumeRow[]; occupation: Occ[]; losses: Loss[]; fte: Fte[]; meta: { cd: string; company: string; region: string };
+type ForecastRow = {
+  unit: string; pacote: string; subpacote: string | null;
+  real: Record<string, number | null>;
+  budget: Record<string, number | null>;
+  forecast: Record<string, number | null>;
+  m1: number | null;
+};
+type DinTT = {
+  unit: string;
+  real: Record<string, number | null>;
+  forecast: Record<string, number | null>;
+  budget: Record<string, number | null>;
+  m1: number | null; mBudget: number | null;
+};
+type RtonBlock = { unit: string; real: Record<string, number | null>;
+  budget05: number | null; forecast05: number | null;
+  budget06: number | null; budget07: number | null;
+  forecast06: number | null; forecast07: number | null;
+};
+type Pc = {
+  unit: string; pacote: string; subpacote: string | null;
+  real: Record<string, number | null>;
+  forecast05: number | null; budget05: number | null;
+  m1: number | null; mBudget: number | null;
+  forecast06: number | null; forecast07: number | null;
 };
 
-const fmtInt = (v: number | null | undefined) =>
-  v == null || isNaN(v as number) ? "—" : Math.round(v as number).toLocaleString("pt-BR");
+const D = data as unknown as {
+  meta: { company: string; title: string; fileName: string };
+  forecast: ForecastRow[];
+  dintt: DinTT[];
+  rton: { volume: RtonBlock[]; custos: RtonBlock[]; rston: RtonBlock[] };
+  principais: Pc[];
+};
+
+const fmtBRL = (v: number | null | undefined) =>
+  v == null || isNaN(v as number) ? "—" :
+  Math.abs(v as number) >= 1e6 ? `R$ ${((v as number) / 1e6).toFixed(2)}M` :
+  Math.abs(v as number) >= 1e3 ? `R$ ${((v as number) / 1e3).toFixed(0)}k` :
+  (v as number).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const fmtNum = (v: number | null | undefined, d = 0) =>
+  v == null || isNaN(v as number) ? "—" : (v as number).toLocaleString("pt-BR", { maximumFractionDigits: d });
 const fmtPct = (v: number | null | undefined, d = 1) =>
   v == null || isNaN(v as number) ? "—" : `${((v as number) * 100).toFixed(d)}%`;
-const fmtBRL = (v: number | null | undefined) =>
-  v == null || isNaN(v as number) ? "—" : (v as number).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 const COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+const MONTH_LABEL: Record<string, string> = {
+  "1": "Jan", "2": "Fev", "3": "Mar", "4": "Abr", "5": "Mai", "6": "Jun",
+  "7": "Jul", "8": "Ago", "9": "Set", "10": "Out", "11": "Nov", "12": "Dez",
+};
 
 export default function Dashboard() {
-  const months = useMemo(() => {
-    const set = new Set<string>();
-    D.shipments.forEach((s) => s.date && set.add(s.date.slice(0, 7)));
-    return ["all", ...Array.from(set).sort()];
-  }, []);
-  const [period, setPeriod] = useState<string>("all");
-  const [destFilter, setDestFilter] = useState<string>("all");
+  const units = useMemo(() => ["all", ...Array.from(new Set(D.forecast.map((r) => r.unit)))], []);
+  const [unit, setUnit] = useState<string>("all");
+  const [horizon, setHorizon] = useState<string>("5");
 
-  const shipFiltered = useMemo(() => {
-    return D.shipments.filter(
-      (s) =>
-        (period === "all" || (s.date || "").startsWith(period)) &&
-        (destFilter === "all" || s.destination === destFilter),
-    );
-  }, [period, destFilter]);
+  const rowsFiltered = useMemo(
+    () => D.forecast.filter((r) => unit === "all" || r.unit === unit),
+    [unit],
+  );
 
-  const totalEmbarques = shipFiltered.length;
-  const noPrazo = shipFiltered.filter((s) => s.late === "NO PRAZO").length;
-  const otd = totalEmbarques ? noPrazo / totalEmbarques : 0;
-  const naGrade = shipFiltered.filter((s) => s.status === "NA GRADE").length;
-  const efetividade = totalEmbarques ? naGrade / totalEmbarques : 0;
+  // KPIs: realizado YTD (1..4), forecast/budget para o horizonte selecionado
+  const sumReal = rowsFiltered.reduce(
+    (a, r) => a + [1, 2, 3, 4].reduce((s, m) => s + (r.real[String(m)] || 0), 0),
+    0,
+  );
+  const sumForecast = rowsFiltered.reduce((a, r) => a + (r.forecast[horizon] || 0), 0);
+  const sumBudget = rowsFiltered.reduce((a, r) => a + (r.budget[horizon] || 0), 0);
+  const variance = sumForecast - sumBudget;
+  const variancePct = sumBudget ? variance / sumBudget : 0;
+  const sumM1 = rowsFiltered.reduce((a, r) => a + (r.m1 || 0), 0);
 
-  const lastOcc = D.occupation.filter((o) => o.cap_ref).slice(-1)[0];
-  const occRefValid = D.occupation.filter((o) => o.pct_ref != null && (o.pct_ref as number) > 0);
-  const occSecValid = D.occupation.filter((o) => o.pct_sec != null && (o.pct_sec as number) > 0);
-  const occRefAvg = occRefValid.reduce((a, o) => a + (o.pct_ref as number), 0) / Math.max(1, occRefValid.length);
-  const occSecAvg = occSecValid.reduce((a, o) => a + (o.pct_sec as number), 0) / Math.max(1, occSecValid.length);
+  // Evolução mensal (real meses 1-4, forecast 5-7) - agregado
+  const monthly = useMemo(() => {
+    const arr: { name: string; Realizado: number | null; Forecast: number | null; Budget: number | null }[] = [];
+    for (let m = 1; m <= 7; m++) {
+      const key = String(m);
+      let real = 0, fc = 0, bud = 0, hasReal = false, hasFc = false, hasBud = false;
+      rowsFiltered.forEach((r) => {
+        if (r.real[key] != null) { real += r.real[key] as number; hasReal = true; }
+        if (r.forecast[key] != null) { fc += r.forecast[key] as number; hasFc = true; }
+        if (r.budget[key] != null) { bud += r.budget[key] as number; hasBud = true; }
+      });
+      arr.push({
+        name: `${MONTH_LABEL[key]}/26`,
+        Realizado: hasReal ? Math.round(real) : null,
+        Forecast: hasFc ? Math.round(fc) : null,
+        Budget: hasBud ? Math.round(bud) : null,
+      });
+    }
+    return arr;
+  }, [rowsFiltered]);
 
-  const ftePresentes = D.fte.filter((f) => f.tipo === "ATUAL" && f.situation === "TRABALHANDO").reduce((a, f) => a + f.qtd, 0);
+  // Por pacote
+  const byPacote = useMemo(() => {
+    const m = new Map<string, { name: string; Realizado: number; Forecast: number; Budget: number }>();
+    rowsFiltered.forEach((r) => {
+      const e = m.get(r.pacote) || { name: r.pacote, Realizado: 0, Forecast: 0, Budget: 0 };
+      [1, 2, 3, 4].forEach((mo) => { e.Realizado += r.real[String(mo)] || 0; });
+      e.Forecast += r.forecast[horizon] || 0;
+      e.Budget += r.budget[horizon] || 0;
+      m.set(r.pacote, e);
+    });
+    return Array.from(m.values()).sort((a, b) => (b.Realizado + b.Forecast) - (a.Realizado + a.Forecast));
+  }, [rowsFiltered, horizon]);
 
-  const lossesActual = D.losses.filter((l) => l.tipo1 !== "Budget").reduce((a, l) => a + (l.mont || 0) + (l.manual || 0), 0);
-  const lossesBudget = D.losses.filter((l) => l.tipo1 === "Budget").reduce((a, l) => a + (l.budget || 0), 0);
+  // Top desvios por subpacote (Forecast vs Budget) no horizonte
+  const desvios = useMemo(() => {
+    return rowsFiltered
+      .map((r) => ({
+        unit: r.unit,
+        pacote: r.pacote,
+        subpacote: r.subpacote || "—",
+        forecast: r.forecast[horizon] || 0,
+        budget: r.budget[horizon] || 0,
+        delta: (r.forecast[horizon] || 0) - (r.budget[horizon] || 0),
+      }))
+      .filter((r) => Math.abs(r.delta) > 1000)
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+      .slice(0, 12);
+  }, [rowsFiltered, horizon]);
 
-  const volChart = useMemo(() => {
-    return D.volume.map((v) => ({
-      name: `${v.month}/${String(v.year).slice(2)}`,
-      Realizado: v.realizado ? Math.round(v.realizado) : null,
-      Budget: v.budget ? Math.round(v.budget) : null,
-      Forecast: v.forecast ? Math.round(v.forecast) : null,
+  // Por unidade (DIN TT)
+  const unitTable = useMemo(() => {
+    return D.dintt.filter((d) => d.unit !== "Total Geral").map((d) => {
+      const fc = d.forecast[horizon];
+      const bud = d.budget[horizon];
+      return {
+        unit: d.unit,
+        forecast: fc,
+        budget: bud,
+        delta: fc != null && bud != null ? fc - bud : null,
+        deltaPct: fc != null && bud != null && bud !== 0 ? (fc - bud) / bud : null,
+      };
+    });
+  }, [horizon]);
+
+  const pieByUnit = useMemo(() => {
+    return D.dintt.filter((d) => d.unit !== "Total Geral").map((d) => ({
+      name: d.unit,
+      value: Math.round(d.forecast[horizon] || 0),
+    }));
+  }, [horizon]);
+
+  // Volume vs custo (R$/TON)
+  const rtonChart = useMemo(() => {
+    return D.rton.rston.map((row) => ({
+      name: row.unit.replace("CD ", ""),
+      "R$/TON Forecast": Math.round((row.forecast05 || 0) * 100) / 100,
+      "R$/TON Budget": Math.round((row.budget05 || 0) * 100) / 100,
     }));
   }, []);
 
-  const occChart = useMemo(() => {
-    return D.occupation
-      .filter((o) => o.cap_ref && o.pct_ref != null)
-      .map((o) => ({
-        date: o.date,
-        "Refrigerado %": Math.round((o.pct_ref as number) * 100),
-        "Seco %": Math.round((o.pct_sec as number) * 100),
-      }));
+  const volumeChart = useMemo(() => {
+    return D.rton.volume.map((row) => ({
+      name: row.unit.replace("CD ", ""),
+      "Volume Forecast": Math.round(row.forecast05 || 0),
+      "Volume Budget": Math.round(row.budget05 || 0),
+    }));
   }, []);
 
-  const destinations = useMemo(() => {
-    const m = new Map<string, { dest: string; total: number; late: number }>();
-    shipFiltered.forEach((s) => {
-      const e = m.get(s.destination) || { dest: s.destination, total: 0, late: 0 };
-      e.total += 1;
-      if (s.late && s.late !== "NO PRAZO") e.late += 1;
-      m.set(s.destination, e);
-    });
-    return Array.from(m.values())
-      .map((d) => ({ ...d, atrasoPct: d.total ? (d.late / d.total) * 100 : 0 }))
-      .sort((a, b) => b.total - a.total);
-  }, [shipFiltered]);
-
-  const destOptions = useMemo(() => {
-    return Array.from(new Set(D.shipments.map((s) => s.destination))).filter(Boolean).sort();
-  }, []);
-
-  const worstDest = [...destinations].sort((a, b) => b.atrasoPct - a.atrasoPct).filter((d) => d.total >= 3).slice(0, 10);
-
-  const statusDist = useMemo(() => {
-    const m = new Map<string, number>();
-    shipFiltered.forEach((s) => {
-      const k = s.status || "—";
-      m.set(k, (m.get(k) || 0) + 1);
-    });
-    return Array.from(m, ([name, value]) => ({ name, value }));
-  }, [shipFiltered]);
-
-  const shiftDist = useMemo(() => {
-    const m = new Map<string, number>();
-    shipFiltered.forEach((s) => {
-      const k = s.shift || "—";
-      m.set(k, (m.get(k) || 0) + 1);
-    });
-    return Array.from(m, ([name, value]) => ({ name, value })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [shipFiltered]);
-
-  const daily = useMemo(() => {
-    const m = new Map<string, { date: string; total: number; noPrazo: number; atrasados: number }>();
-    shipFiltered.forEach((s) => {
-      const e = m.get(s.date) || { date: s.date, total: 0, noPrazo: 0, atrasados: 0 };
-      e.total += 1;
-      if (s.late === "NO PRAZO") e.noPrazo += 1;
-      else e.atrasados += 1;
-      m.set(s.date, e);
-    });
-    return Array.from(m.values()).sort((a, b) => a.date.localeCompare(b.date));
-  }, [shipFiltered]);
-
-  const fteByActivity = useMemo(() => {
-    const m = new Map<string, number>();
-    D.fte.filter((f) => f.tipo === "ATUAL" && f.situation === "TRABALHANDO").forEach((f) => {
-      const k = f.activity || "—";
-      m.set(k, (m.get(k) || 0) + f.qtd);
-    });
-    return Array.from(m, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, []);
-
-  const fteByShift = useMemo(() => {
-    const m = new Map<string, number>();
-    D.fte.filter((f) => f.tipo === "ATUAL" && f.situation === "TRABALHANDO").forEach((f) => {
-      const k = f.shift || "—";
-      m.set(k, (m.get(k) || 0) + f.qtd);
-    });
-    return Array.from(m, ([name, value]) => ({ name, value }));
-  }, []);
-
-  const lossesByPkg = useMemo(() => {
-    const m = new Map<string, { name: string; Realizado: number; Budget: number }>();
-    D.losses.forEach((l) => {
-      const k = l.pacote || "—";
-      const e = m.get(k) || { name: k, Realizado: 0, Budget: 0 };
-      if (l.tipo1 === "Budget") e.Budget += l.budget || 0;
-      else e.Realizado += (l.mont || 0) + (l.manual || 0);
-      m.set(k, e);
-    });
-    return Array.from(m.values()).sort((a, b) => (b.Realizado + b.Budget) - (a.Realizado + a.Budget));
-  }, []);
+  // Principais contas
+  const topAccounts = useMemo(() => {
+    return [...D.principais]
+      .map((p) => ({
+        ...p,
+        total: [2, 3, 4].reduce((s, m) => s + (p.real[String(m)] || 0), 0),
+      }))
+      .filter((p) => unit === "all" || p.unit === unit)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [unit]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -169,27 +191,26 @@ export default function Dashboard() {
           <div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              {D.meta.company} · {D.meta.region}
+              {D.meta.company} · Forecast 2026
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Painel Logístico — {D.meta.cd}</h1>
-            <p className="text-sm text-muted-foreground">Performance operacional, ocupação, volume, perdas e mão-de-obra</p>
+            <h1 className="text-2xl font-bold tracking-tight">Painel de Forecast — Custos & Volume</h1>
+            <p className="text-sm text-muted-foreground">Análise multi-CD: realizado, forecast, budget, desvios e R$/TON</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Período" /></SelectTrigger>
+            <Select value={unit} onValueChange={setUnit}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Unidade" /></SelectTrigger>
               <SelectContent>
-                {months.map((m) => (
-                  <SelectItem key={m} value={m}>{m === "all" ? "Todo o período" : m}</SelectItem>
+                {units.map((u) => (
+                  <SelectItem key={u} value={u}>{u === "all" ? "Todas as unidades" : u}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select value={destFilter} onValueChange={setDestFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Destino" /></SelectTrigger>
+            <Select value={horizon} onValueChange={setHorizon}>
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Horizonte" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os destinos</SelectItem>
-                {destOptions.map((d) => (
-                  <SelectItem key={d} value={d}>{d}</SelectItem>
-                ))}
+                <SelectItem value="5">Mai/26</SelectItem>
+                <SelectItem value="6">Jun/26</SelectItem>
+                <SelectItem value="7">Jul/26</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -197,237 +218,81 @@ export default function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <KpiCard icon={Truck} label="Embarques" value={fmtInt(totalEmbarques)} hint="no período" />
-          <KpiCard icon={Clock} label="OTD (No prazo)" value={fmtPct(otd)} tone={otd >= 0.95 ? "good" : otd >= 0.85 ? "warn" : "bad"} hint={`${noPrazo}/${totalEmbarques}`} />
-          <KpiCard icon={Activity} label="Aderência grade" value={fmtPct(efetividade)} tone={efetividade >= 0.9 ? "good" : efetividade >= 0.7 ? "warn" : "bad"} hint={`${naGrade} na grade`} />
-          <KpiCard icon={Warehouse} label="Ocupação Refrig." value={fmtPct(occRefAvg)} hint={`Cap ${fmtInt(lastOcc?.cap_ref)} pos`} tone={occRefAvg > 0.9 ? "bad" : occRefAvg > 0.75 ? "warn" : "good"} />
-          <KpiCard icon={Package} label="Ocupação Seco" value={fmtPct(occSecAvg)} hint={`Cap ${fmtInt(lastOcc?.cap_sec)} pos`} tone={occSecAvg > 0.9 ? "bad" : occSecAvg > 0.75 ? "warn" : "good"} />
-          <KpiCard icon={Users} label="FTE ativo" value={fmtInt(ftePresentes)} hint="trabalhando" />
+        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <KpiCard icon={DollarSign} label="Realizado YTD" value={fmtBRL(sumReal)} hint="Jan–Abr/26" />
+          <KpiCard icon={Target} label={`Forecast ${MONTH_LABEL[horizon]}/26`} value={fmtBRL(sumForecast)} />
+          <KpiCard icon={Activity} label={`Budget ${MONTH_LABEL[horizon]}/26`} value={fmtBRL(sumBudget)} />
+          <KpiCard icon={variance > 0 ? TrendingUp : TrendingDown}
+            label="Desvio FC vs Bud" value={fmtBRL(variance)}
+            tone={variance > 0 ? "bad" : "good"}
+            hint={`${variancePct >= 0 ? "+" : ""}${fmtPct(variancePct)}`} />
+          <KpiCard icon={AlertTriangle} label="Var. vs M-1" value={fmtBRL(sumM1)}
+            tone={sumM1 > 0 ? "warn" : "good"} hint="ajuste do mês" />
         </section>
 
-        <Tabs defaultValue="ops" className="space-y-4">
-          <TabsList className="grid grid-cols-3 md:grid-cols-5 w-full md:w-auto">
-            <TabsTrigger value="ops">Operação</TabsTrigger>
-            <TabsTrigger value="warehouse">Armazém</TabsTrigger>
-            <TabsTrigger value="volume">Volume</TabsTrigger>
-            <TabsTrigger value="losses">Perdas</TabsTrigger>
-            <TabsTrigger value="fte">Mão-de-obra</TabsTrigger>
+        <Tabs defaultValue="overview" className="space-y-4">
+          <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full md:w-auto">
+            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+            <TabsTrigger value="pacotes">Pacotes</TabsTrigger>
+            <TabsTrigger value="desvios">Desvios</TabsTrigger>
+            <TabsTrigger value="unidades">Unidades</TabsTrigger>
+            <TabsTrigger value="rston">Volume & R$/TON</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="ops" className="space-y-4">
-            <div className="grid lg:grid-cols-3 gap-4">
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Embarques diários — On-time vs Atrasados</CardTitle>
-                  <CardDescription>Volume diário de OCRs com status de pontualidade</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={daily}>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="noPrazo" stackId="a" fill="#16a34a" name="No prazo" />
-                      <Bar dataKey="atrasados" stackId="a" fill="#dc2626" name="Atrasados" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Status dos embarques</CardTitle>
-                  <CardDescription>Distribuição por status de grade</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie data={statusDist} dataKey="value" nameKey="name" innerRadius={60} outerRadius={95} paddingAngle={2}>
-                        {statusDist.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid lg:grid-cols-3 gap-4">
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Top destinos por volume</CardTitle>
-                  <CardDescription>OCRs e atrasados por destino</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={350}>
-                    <BarChart data={destinations.slice(0, 12)} layout="vertical" margin={{ left: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                      <XAxis type="number" tick={{ fontSize: 11 }} />
-                      <YAxis dataKey="dest" type="category" width={120} tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="total" fill="#2563eb" name="OCRs" />
-                      <Bar dataKey="late" fill="#dc2626" name="Atrasados" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" />Pior performance</CardTitle>
-                  <CardDescription>Destinos com maior % de atraso (≥3 OCRs)</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 max-h-[350px] overflow-y-auto">
-                    {worstDest.length === 0 && <p className="text-sm text-muted-foreground">Sem atrasos relevantes</p>}
-                    {worstDest.map((d) => (
-                      <div key={d.dest} className="flex items-center justify-between text-sm border-b pb-2 last:border-0">
-                        <div>
-                          <div className="font-medium">{d.dest}</div>
-                          <div className="text-xs text-muted-foreground">{d.late}/{d.total} OCRs</div>
-                        </div>
-                        <Badge variant={d.atrasoPct > 30 ? "destructive" : "secondary"}>{d.atrasoPct.toFixed(0)}%</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader><CardTitle>Distribuição por turno de saída</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={shiftDist}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="#7c3aed" name="OCRs" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="warehouse" className="space-y-4">
+          <TabsContent value="overview" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Ocupação do armazém — Refrigerado vs Seco</CardTitle>
-                <CardDescription>% de ocupação diária. Atenção a picos &gt; 90%.</CardDescription>
+                <CardTitle>Evolução mensal — Realizado vs Forecast vs Budget</CardTitle>
+                <CardDescription>Custos totais agregados, em R$</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={380}>
-                  <AreaChart data={occChart}>
-                    <defs>
-                      <linearGradient id="ref" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0891b2" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#0891b2" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="sec" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} unit="%" />
-                    <Tooltip />
-                    <Legend />
-                    <Area type="monotone" dataKey="Refrigerado %" stroke="#0891b2" fill="url(#ref)" />
-                    <Area type="monotone" dataKey="Seco %" stroke="#f59e0b" fill="url(#sec)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="volume" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Volume mensal — Realizado vs Budget vs Forecast</CardTitle>
-                <CardDescription>CD Carambeí · Volumes em unidades</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <ComposedChart data={volChart}>
+                  <ComposedChart data={monthly}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}M`} />
-                    <Tooltip formatter={(v: number) => v?.toLocaleString("pt-BR")} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
+                    <Tooltip formatter={(v: number) => fmtBRL(v)} />
                     <Legend />
                     <Bar dataKey="Realizado" fill="#2563eb" />
-                    <Bar dataKey="Budget" fill="#94a3b8" />
                     <Line type="monotone" dataKey="Forecast" stroke="#16a34a" strokeWidth={2} dot />
+                    <Line type="monotone" dataKey="Budget" stroke="#dc2626" strokeWidth={2} strokeDasharray="5 5" dot />
                   </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
-          </TabsContent>
 
-          <TabsContent value="losses" className="space-y-4">
-            <div className="grid md:grid-cols-3 gap-3">
-              <KpiCard icon={TrendingUp} label="Perdas realizadas" value={fmtBRL(lossesActual)} hint="acumulado" />
-              <KpiCard icon={AlertTriangle} label="Budget perdas" value={fmtBRL(lossesBudget)} hint="planejado" />
-              <KpiCard icon={Activity} label="Aderência ao budget"
-                value={lossesBudget ? fmtPct(lossesActual / lossesBudget) : "—"}
-                tone={lossesBudget && lossesActual / lossesBudget > 1 ? "bad" : "good"} />
-            </div>
-            <Card>
-              <CardHeader>
-                <CardTitle>Perdas por pacote</CardTitle>
-                <CardDescription>Realizado vs Budget (R$)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={380}>
-                  <BarChart data={lossesByPkg} layout="vertical" margin={{ left: 40 }}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                    <YAxis dataKey="name" type="category" width={170} tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v: number) => fmtBRL(v)} />
-                    <Legend />
-                    <Bar dataKey="Realizado" fill="#dc2626" />
-                    <Bar dataKey="Budget" fill="#94a3b8" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="fte" className="space-y-4">
-            <div className="grid lg:grid-cols-2 gap-4">
-              <Card>
+            <div className="grid lg:grid-cols-3 gap-4">
+              <Card className="lg:col-span-2">
                 <CardHeader>
-                  <CardTitle>FTE por atividade</CardTitle>
-                  <CardDescription>Colaboradores ativos por área</CardDescription>
+                  <CardTitle>Forecast por unidade</CardTitle>
+                  <CardDescription>{MONTH_LABEL[horizon]}/26 — comparação FC vs Budget</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={340}>
-                    <BarChart data={fteByActivity} layout="vertical" margin={{ left: 30 }}>
+                  <ResponsiveContainer width="100%" height={320}>
+                    <BarChart data={unitTable}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                      <XAxis type="number" tick={{ fontSize: 11 }} />
-                      <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="#2563eb" name="FTE" />
+                      <XAxis dataKey="unit" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
+                      <Tooltip formatter={(v: number) => fmtBRL(v)} />
+                      <Legend />
+                      <Bar dataKey="forecast" name="Forecast" fill="#16a34a" />
+                      <Bar dataKey="budget" name="Budget" fill="#94a3b8" />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>FTE por turno</CardTitle>
-                  <CardDescription>Distribuição da força de trabalho</CardDescription>
+                  <CardTitle>Mix por unidade</CardTitle>
+                  <CardDescription>Participação no forecast</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={340}>
+                  <ResponsiveContainer width="100%" height={320}>
                     <PieChart>
-                      <Pie data={fteByShift} dataKey="value" nameKey="name" innerRadius={70} outerRadius={120} paddingAngle={2} label>
-                        {fteByShift.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      <Pie data={pieByUnit} dataKey="value" nameKey="name" innerRadius={60} outerRadius={110} paddingAngle={2}>
+                        {pieByUnit.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                       </Pie>
-                      <Tooltip />
+                      <Tooltip formatter={(v: number) => fmtBRL(v)} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                     </PieChart>
                   </ResponsiveContainer>
@@ -435,12 +300,230 @@ export default function Dashboard() {
               </Card>
             </div>
           </TabsContent>
+
+          <TabsContent value="pacotes" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Custos por pacote</CardTitle>
+                <CardDescription>Top pacotes consolidando YTD realizado, forecast e budget</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={Math.max(360, byPacote.length * 26)}>
+                  <BarChart data={byPacote.slice(0, 15)} layout="vertical" margin={{ left: 30 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis dataKey="name" type="category" width={210} tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: number) => fmtBRL(v)} />
+                    <Legend />
+                    <Bar dataKey="Realizado" fill="#2563eb" />
+                    <Bar dataKey="Forecast" fill="#16a34a" />
+                    <Bar dataKey="Budget" fill="#94a3b8" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="desvios" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  Top desvios — Forecast vs Budget ({MONTH_LABEL[horizon]}/26)
+                </CardTitle>
+                <CardDescription>Subpacotes que mais distorcem o orçamento</CardDescription>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs uppercase text-muted-foreground border-b">
+                    <tr>
+                      <th className="text-left py-2 px-2">Unidade</th>
+                      <th className="text-left py-2 px-2">Pacote</th>
+                      <th className="text-left py-2 px-2">Subpacote</th>
+                      <th className="text-right py-2 px-2">Budget</th>
+                      <th className="text-right py-2 px-2">Forecast</th>
+                      <th className="text-right py-2 px-2">Desvio</th>
+                      <th className="text-right py-2 px-2">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {desvios.map((d, i) => {
+                      const pct = d.budget ? (d.delta / d.budget) * 100 : 0;
+                      return (
+                        <tr key={i} className="border-b last:border-0">
+                          <td className="py-2 px-2 font-medium">{d.unit.replace("CD ", "")}</td>
+                          <td className="py-2 px-2 text-muted-foreground">{d.pacote}</td>
+                          <td className="py-2 px-2">{d.subpacote}</td>
+                          <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(d.budget)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(d.forecast)}</td>
+                          <td className={`py-2 px-2 text-right tabular-nums font-semibold ${d.delta > 0 ? "text-red-600" : "text-green-600"}`}>
+                            {d.delta > 0 ? "+" : ""}{fmtBRL(d.delta)}
+                          </td>
+                          <td className="py-2 px-2 text-right">
+                            <Badge variant={Math.abs(pct) > 50 ? "destructive" : "secondary"}>
+                              {pct > 0 ? "+" : ""}{pct.toFixed(0)}%
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Principais contas — Realizado YTD</CardTitle>
+                <CardDescription>Top 10 contas por custo acumulado Fev–Abr/26</CardDescription>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs uppercase text-muted-foreground border-b">
+                    <tr>
+                      <th className="text-left py-2 px-2">Unidade</th>
+                      <th className="text-left py-2 px-2">Pacote</th>
+                      <th className="text-left py-2 px-2">Subpacote</th>
+                      <th className="text-right py-2 px-2">Realizado YTD</th>
+                      <th className="text-right py-2 px-2">M-1</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topAccounts.map((p, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="py-2 px-2 font-medium">{p.unit.replace("CD ", "")}</td>
+                        <td className="py-2 px-2 text-muted-foreground">{p.pacote}</td>
+                        <td className="py-2 px-2">{p.subpacote}</td>
+                        <td className="py-2 px-2 text-right tabular-nums font-semibold">{fmtBRL(p.total)}</td>
+                        <td className={`py-2 px-2 text-right tabular-nums ${(p.m1 || 0) > 0 ? "text-red-600" : "text-green-600"}`}>
+                          {p.m1 != null ? (p.m1 > 0 ? "+" : "") + fmtBRL(p.m1) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="unidades" className="space-y-4">
+            <div className="grid md:grid-cols-3 gap-3">
+              {unitTable.map((u) => (
+                <Card key={u.unit}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-primary" />{u.unit}
+                    </CardTitle>
+                    <CardDescription>{MONTH_LABEL[horizon]}/26</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Forecast</span>
+                      <span className="font-semibold tabular-nums">{fmtBRL(u.forecast)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Budget</span>
+                      <span className="tabular-nums">{fmtBRL(u.budget)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm pt-2 border-t">
+                      <span className="text-muted-foreground">Desvio</span>
+                      <Badge variant={(u.delta || 0) > 0 ? "destructive" : "secondary"}>
+                        {(u.delta || 0) > 0 ? "+" : ""}{fmtBRL(u.delta || 0)} ({fmtPct(u.deltaPct || 0)})
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="rston" className="space-y-4">
+            <div className="grid lg:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Volume (TON) — Mai/26</CardTitle>
+                  <CardDescription>Forecast vs Budget por unidade</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={volumeChart}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
+                      <Tooltip formatter={(v: number) => fmtNum(v)} />
+                      <Legend />
+                      <Bar dataKey="Volume Forecast" fill="#16a34a" />
+                      <Bar dataKey="Volume Budget" fill="#94a3b8" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>R$/TON — Mai/26</CardTitle>
+                  <CardDescription>Custo unitário por unidade</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={rtonChart}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v: number) => `R$ ${fmtNum(v, 2)}`} />
+                      <Legend />
+                      <Bar dataKey="R$/TON Forecast" fill="#2563eb" />
+                      <Bar dataKey="R$/TON Budget" fill="#f59e0b" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Tabela detalhada — Volume, Custos e R$/TON</CardTitle>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs uppercase text-muted-foreground border-b">
+                    <tr>
+                      <th className="text-left py-2 px-2">Unidade</th>
+                      <th className="text-right py-2 px-2">Vol. FC Mai</th>
+                      <th className="text-right py-2 px-2">Vol. Bud Mai</th>
+                      <th className="text-right py-2 px-2">Custo FC Mai</th>
+                      <th className="text-right py-2 px-2">Custo Bud Mai</th>
+                      <th className="text-right py-2 px-2">R$/TON FC</th>
+                      <th className="text-right py-2 px-2">R$/TON Bud</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {D.rton.volume.map((v, i) => {
+                      const c = D.rton.custos[i];
+                      const r = D.rton.rston[i];
+                      return (
+                        <tr key={i} className="border-b last:border-0">
+                          <td className="py-2 px-2 font-medium">{v.unit}</td>
+                          <td className="py-2 px-2 text-right tabular-nums">{fmtNum(v.forecast05)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtNum(v.budget05)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(c.forecast05)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtBRL(c.budget05)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums font-semibold">R$ {fmtNum(r.forecast05, 2)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">R$ {fmtNum(r.budget05, 2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
 
         <footer className="text-xs text-muted-foreground text-center pt-6">
-          Fonte: PAINEL.xlsb · {D.shipments.length} OCRs · {D.occupation.length} dias de ocupação · {D.fte.length} registros FTE
+          Fonte: {D.meta.fileName} · {D.forecast.length} linhas de forecast · {D.dintt.length} unidades · {D.principais.length} contas
         </footer>
       </main>
     </div>
   );
 }
+<Package className="hidden" />

@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, DollarSign, Package, Building2, Target, AlertTriangle, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity } from "lucide-react";
 
 type ForecastRow = {
   unit: string; pacote: string; subpacote: string | null;
@@ -526,4 +526,3 @@ export default function Dashboard() {
     </div>
   );
 }
-<Package className="hidden" />

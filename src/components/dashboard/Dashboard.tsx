@@ -111,9 +111,6 @@ export default function Dashboard() {
     () => PERIODS.find((p) => p.value === period)?.label ?? "",
     [period, PERIODS],
   );
-  // Para tabelas detalhadas que mostram um mês de referência (último do período)
-  const refMonth = String(periodMonths[periodMonths.length - 1]);
-
   const rowsFiltered = useMemo(
     () => forecastRows.filter((r) => unit === "all" || r.unit === unit),
     [unit, forecastRows],

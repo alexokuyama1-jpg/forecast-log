@@ -65,7 +65,7 @@ const MONTH_LABEL: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const STORAGE_KEY = "forecast.rows.v1";
+  const STORAGE_KEY = "forecast.rows.v2";
   const [forecastRows, setForecastRows] = useState<ForecastRow[]>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -81,14 +81,42 @@ export default function Dashboard() {
 
   const units = useMemo(() => ["all", ...Array.from(new Set(forecastRows.map((r) => r.unit)))], [forecastRows]);
   const [unit, setUnit] = useState<string>("all");
-  const [horizon, setHorizon] = useState<string>("5");
+  const [period, setPeriod] = useState<string>("m5");
 
+  // Períodos selecionáveis (cada um expande para um conjunto de meses 1..12)
+  const PERIODS: { value: string; label: string; months: number[] }[] = useMemo(() => [
+    ...Array.from({ length: 12 }, (_, i) => ({
+      value: `m${i + 1}`, label: `${MONTH_LABEL[String(i + 1)]}/26`, months: [i + 1],
+    })),
+    { value: "b1", label: "Bim. Jan–Fev", months: [1, 2] },
+    { value: "b2", label: "Bim. Mar–Abr", months: [3, 4] },
+    { value: "b3", label: "Bim. Mai–Jun", months: [5, 6] },
+    { value: "b4", label: "Bim. Jul–Ago", months: [7, 8] },
+    { value: "b5", label: "Bim. Set–Out", months: [9, 10] },
+    { value: "b6", label: "Bim. Nov–Dez", months: [11, 12] },
+    { value: "q1", label: "T1 (Jan–Mar)", months: [1, 2, 3] },
+    { value: "q2", label: "T2 (Abr–Jun)", months: [4, 5, 6] },
+    { value: "q3", label: "T3 (Jul–Set)", months: [7, 8, 9] },
+    { value: "q4", label: "T4 (Out–Dez)", months: [10, 11, 12] },
+    { value: "h1", label: "1º Semestre", months: [1, 2, 3, 4, 5, 6] },
+    { value: "h2", label: "2º Semestre", months: [7, 8, 9, 10, 11, 12] },
+    { value: "ytd", label: "YTD (Real)", months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+    { value: "fy", label: "Ano 2026", months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+  ], []);
+  const periodMonths = useMemo(
+    () => PERIODS.find((p) => p.value === period)?.months ?? [5],
+    [period, PERIODS],
+  );
+  const periodLabel = useMemo(
+    () => PERIODS.find((p) => p.value === period)?.label ?? "",
+    [period, PERIODS],
+  );
   const rowsFiltered = useMemo(
     () => forecastRows.filter((r) => unit === "all" || r.unit === unit),
     [unit, forecastRows],
   );
 
-  const updateRow = (idx: number, field: "forecast" | "budget", month: string, val: string) => {
+  const updateRow = (idx: number, field: "real" | "forecast" | "budget", month: string, val: string) => {
     setForecastRows((prev) => {
       const next = prev.slice();
       const row = { ...next[idx], [field]: { ...next[idx][field] } };
@@ -100,21 +128,39 @@ export default function Dashboard() {
   };
   const resetBase = () => setForecastRows(JSON.parse(JSON.stringify(D.forecast)) as ForecastRow[]);
 
-  // KPIs: realizado YTD (1..4), forecast/budget para o horizonte selecionado
+  // Realizado YTD = soma de todos os meses com Real preenchido (1..12)
+  const realMonths = useMemo(() => {
+    const set = new Set<number>();
+    forecastRows.forEach((r) => {
+      for (let m = 1; m <= 12; m++) if (r.real[String(m)] != null) set.add(m);
+    });
+    return Array.from(set).sort((a, b) => a - b);
+  }, [forecastRows]);
   const sumReal = rowsFiltered.reduce(
-    (a, r) => a + [1, 2, 3, 4].reduce((s, m) => s + (r.real[String(m)] || 0), 0),
+    (a, r) => a + realMonths.reduce((s, m) => s + (r.real[String(m)] || 0), 0),
     0,
   );
-  const sumForecast = rowsFiltered.reduce((a, r) => a + (r.forecast[horizon] || 0), 0);
-  const sumBudget = rowsFiltered.reduce((a, r) => a + (r.budget[horizon] || 0), 0);
+  // Soma agregada do período selecionado
+  const sumRealPeriod = rowsFiltered.reduce(
+    (a, r) => a + periodMonths.reduce((s, m) => s + (r.real[String(m)] || 0), 0),
+    0,
+  );
+  const sumForecast = rowsFiltered.reduce(
+    (a, r) => a + periodMonths.reduce((s, m) => s + (r.forecast[String(m)] || 0), 0),
+    0,
+  );
+  const sumBudget = rowsFiltered.reduce(
+    (a, r) => a + periodMonths.reduce((s, m) => s + (r.budget[String(m)] || 0), 0),
+    0,
+  );
   const variance = sumForecast - sumBudget;
   const variancePct = sumBudget ? variance / sumBudget : 0;
   const sumM1 = rowsFiltered.reduce((a, r) => a + (r.m1 || 0), 0);
 
-  // Evolução mensal (real meses 1-4, forecast 5-7) - agregado
+  // Evolução mensal — 12 meses, Real onde existir, FC/Bud onde existirem
   const monthly = useMemo(() => {
     const arr: { name: string; Realizado: number | null; Forecast: number | null; Budget: number | null }[] = [];
-    for (let m = 1; m <= 7; m++) {
+    for (let m = 1; m <= 12; m++) {
       const key = String(m);
       let real = 0, fc = 0, bud = 0, hasReal = false, hasFc = false, hasBud = false;
       rowsFiltered.forEach((r) => {
@@ -132,56 +178,60 @@ export default function Dashboard() {
     return arr;
   }, [rowsFiltered]);
 
-  // Por pacote
+  // Por pacote — Realizado e FC/Bud no período selecionado
   const byPacote = useMemo(() => {
     const m = new Map<string, { name: string; Realizado: number; Forecast: number; Budget: number }>();
     rowsFiltered.forEach((r) => {
       const e = m.get(r.pacote) || { name: r.pacote, Realizado: 0, Forecast: 0, Budget: 0 };
-      [1, 2, 3, 4].forEach((mo) => { e.Realizado += r.real[String(mo)] || 0; });
-      e.Forecast += r.forecast[horizon] || 0;
-      e.Budget += r.budget[horizon] || 0;
+      periodMonths.forEach((mo) => {
+        e.Realizado += r.real[String(mo)] || 0;
+        e.Forecast += r.forecast[String(mo)] || 0;
+        e.Budget += r.budget[String(mo)] || 0;
+      });
       m.set(r.pacote, e);
     });
     return Array.from(m.values()).sort((a, b) => (b.Realizado + b.Forecast) - (a.Realizado + a.Forecast));
-  }, [rowsFiltered, horizon]);
+  }, [rowsFiltered, periodMonths]);
 
-  // Top desvios por subpacote (Forecast vs Budget) no horizonte
+  // Top desvios por subpacote (Forecast vs Budget) no período
   const desvios = useMemo(() => {
     return rowsFiltered
-      .map((r) => ({
-        unit: r.unit,
-        pacote: r.pacote,
-        subpacote: r.subpacote || "—",
-        forecast: r.forecast[horizon] || 0,
-        budget: r.budget[horizon] || 0,
-        delta: (r.forecast[horizon] || 0) - (r.budget[horizon] || 0),
-      }))
+      .map((r) => {
+        const fc = periodMonths.reduce((s, m) => s + (r.forecast[String(m)] || 0), 0);
+        const bud = periodMonths.reduce((s, m) => s + (r.budget[String(m)] || 0), 0);
+        return {
+          unit: r.unit, pacote: r.pacote, subpacote: r.subpacote || "—",
+          forecast: fc, budget: bud, delta: fc - bud,
+        };
+      })
       .filter((r) => Math.abs(r.delta) > 1000)
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 12);
-  }, [rowsFiltered, horizon]);
+  }, [rowsFiltered, periodMonths]);
 
-  // Por unidade (DIN TT)
+  // Por unidade (DIN TT) — soma no período (apenas meses 5..7 estão na base original)
   const unitTable = useMemo(() => {
     return D.dintt.filter((d) => d.unit !== "Total Geral").map((d) => {
-      const fc = d.forecast[horizon];
-      const bud = d.budget[horizon];
+      const fc = periodMonths.reduce((s, m) => s + (d.forecast[String(m)] || 0), 0);
+      const bud = periodMonths.reduce((s, m) => s + (d.budget[String(m)] || 0), 0);
+      const hasFc = periodMonths.some((m) => d.forecast[String(m)] != null);
+      const hasBud = periodMonths.some((m) => d.budget[String(m)] != null);
       return {
         unit: d.unit,
-        forecast: fc,
-        budget: bud,
-        delta: fc != null && bud != null ? fc - bud : null,
-        deltaPct: fc != null && bud != null && bud !== 0 ? (fc - bud) / bud : null,
+        forecast: hasFc ? fc : null,
+        budget: hasBud ? bud : null,
+        delta: hasFc && hasBud ? fc - bud : null,
+        deltaPct: hasFc && hasBud && bud !== 0 ? (fc - bud) / bud : null,
       };
     });
-  }, [horizon]);
+  }, [periodMonths]);
 
   const pieByUnit = useMemo(() => {
     return D.dintt.filter((d) => d.unit !== "Total Geral").map((d) => ({
       name: d.unit,
-      value: Math.round(d.forecast[horizon] || 0),
+      value: Math.round(periodMonths.reduce((s, m) => s + (d.forecast[String(m)] || 0), 0)),
     }));
-  }, [horizon]);
+  }, [periodMonths]);
 
   // Volume vs custo (R$/TON)
   const rtonChart = useMemo(() => {
@@ -233,12 +283,25 @@ export default function Dashboard() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={horizon} onValueChange={setHorizon}>
-              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Horizonte" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">Mai/26</SelectItem>
-                <SelectItem value="6">Jun/26</SelectItem>
-                <SelectItem value="7">Jul/26</SelectItem>
+            <Select value={period} onValueChange={setPeriod}>
+              <SelectTrigger className="w-[220px]"><SelectValue placeholder="Período" /></SelectTrigger>
+              <SelectContent className="max-h-[420px]">
+                <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Mês</div>
+                {PERIODS.filter((p) => p.value.startsWith("m")).map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+                <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Bimestre</div>
+                {PERIODS.filter((p) => p.value.startsWith("b")).map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+                <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Trimestre</div>
+                {PERIODS.filter((p) => p.value.startsWith("q")).map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+                <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Outros</div>
+                {PERIODS.filter((p) => ["h1", "h2", "ytd", "fy"].includes(p.value)).map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -247,9 +310,18 @@ export default function Dashboard() {
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
         <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <KpiCard icon={DollarSign} label="Realizado YTD" value={fmtBRL(sumReal)} hint="Jan–Abr/26" />
-          <KpiCard icon={Target} label={`Forecast ${MONTH_LABEL[horizon]}/26`} value={fmtBRL(sumForecast)} />
-          <KpiCard icon={Activity} label={`Budget ${MONTH_LABEL[horizon]}/26`} value={fmtBRL(sumBudget)} />
+          <KpiCard
+            icon={DollarSign}
+            label="Realizado YTD"
+            value={fmtBRL(sumReal)}
+            hint={
+              realMonths.length
+                ? `${MONTH_LABEL[String(realMonths[0])]}–${MONTH_LABEL[String(realMonths[realMonths.length - 1])]}/26`
+                : "—"
+            }
+          />
+          <KpiCard icon={Target} label={`Forecast ${periodLabel}`} value={fmtBRL(sumForecast)} hint={sumRealPeriod ? `Real no período: ${fmtBRL(sumRealPeriod)}` : undefined} />
+          <KpiCard icon={Activity} label={`Budget ${periodLabel}`} value={fmtBRL(sumBudget)} />
           <KpiCard icon={variance > 0 ? TrendingUp : TrendingDown}
             label="Desvio FC vs Bud" value={fmtBRL(variance)}
             tone={variance > 0 ? "bad" : "good"}
@@ -294,7 +366,7 @@ export default function Dashboard() {
               <Card className="lg:col-span-2">
                 <CardHeader>
                   <CardTitle>Forecast por unidade</CardTitle>
-                  <CardDescription>{MONTH_LABEL[horizon]}/26 — comparação FC vs Budget</CardDescription>
+                  <CardDescription>{periodLabel} — comparação FC vs Budget</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={320}>
@@ -358,7 +430,7 @@ export default function Dashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-destructive" />
-                  Top desvios — Forecast vs Budget ({MONTH_LABEL[horizon]}/26)
+                  Top desvios — Forecast vs Budget ({periodLabel})
                 </CardTitle>
                 <CardDescription>Subpacotes que mais distorcem o orçamento</CardDescription>
               </CardHeader>
@@ -443,7 +515,7 @@ export default function Dashboard() {
                     <CardTitle className="text-base flex items-center gap-2">
                       <Building2 className="h-4 w-4 text-primary" />{u.unit}
                     </CardTitle>
-                    <CardDescription>{MONTH_LABEL[horizon]}/26</CardDescription>
+                    <CardDescription>{periodLabel}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="flex justify-between text-sm">
@@ -553,10 +625,10 @@ export default function Dashboard() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Database className="h-4 w-4 text-primary" />
-                    Base de dados — Edição de Forecast & Budget
+                    Base de dados — Real, Forecast & Budget (Jan–Dez/26)
                   </CardTitle>
                   <CardDescription>
-                    Edite os valores de Forecast e Budget (Mai/Jun/Jul). As alterações atualizam todos os gráficos e KPIs do painel automaticamente e são salvas no navegador.
+                    Preencha o <strong>Real do mês</strong> conforme os custos caem na conta. Edite também Forecast e Budget de qualquer mês até Dez/26. Todas as alterações refletem em tempo real na Visão Geral, KPIs e demais abas, e ficam salvas no navegador.
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -566,54 +638,67 @@ export default function Dashboard() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-[10px] uppercase text-muted-foreground border-b sticky top-0 bg-card">
-                    <tr>
-                      <th className="text-left py-2 px-2">Unidade</th>
-                      <th className="text-left py-2 px-2">Pacote</th>
-                      <th className="text-left py-2 px-2">Subpacote</th>
-                      <th className="text-right py-2 px-2 bg-muted/40">FC Mai</th>
-                      <th className="text-right py-2 px-2 bg-muted/40">FC Jun</th>
-                      <th className="text-right py-2 px-2 bg-muted/40">FC Jul</th>
-                      <th className="text-right py-2 px-2">Bud Mai</th>
-                      <th className="text-right py-2 px-2">Bud Jun</th>
-                      <th className="text-right py-2 px-2">Bud Jul</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {forecastRows
-                      .map((r, idx) => ({ r, idx }))
-                      .filter(({ r }) => unit === "all" || r.unit === unit)
-                      .map(({ r, idx }) => (
-                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
-                          <td className="py-1 px-2 font-medium whitespace-nowrap">{r.unit.replace("CD ", "")}</td>
-                          <td className="py-1 px-2 text-muted-foreground whitespace-nowrap">{r.pacote}</td>
-                          <td className="py-1 px-2 whitespace-nowrap">{r.subpacote || "—"}</td>
-                          {(["5", "6", "7"] as const).map((m) => (
-                            <td key={`f${m}`} className="py-1 px-1 bg-muted/20">
-                              <Input
-                                type="number"
-                                value={r.forecast[m] ?? ""}
-                                onChange={(e) => updateRow(idx, "forecast", m, e.target.value)}
-                                className="h-7 text-right tabular-nums text-xs w-28 ml-auto"
-                              />
-                            </td>
-                          ))}
-                          {(["5", "6", "7"] as const).map((m) => (
-                            <td key={`b${m}`} className="py-1 px-1">
-                              <Input
-                                type="number"
-                                value={r.budget[m] ?? ""}
-                                onChange={(e) => updateRow(idx, "budget", m, e.target.value)}
-                                className="h-7 text-right tabular-nums text-xs w-28 ml-auto"
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              <CardContent className="space-y-3">
+                <Tabs defaultValue="real" className="space-y-3">
+                  <TabsList>
+                    <TabsTrigger value="real">Real do mês</TabsTrigger>
+                    <TabsTrigger value="forecast">Forecast</TabsTrigger>
+                    <TabsTrigger value="budget">Budget</TabsTrigger>
+                  </TabsList>
+                  {(["real", "forecast", "budget"] as const).map((field) => (
+                    <TabsContent key={field} value={field} className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="text-[10px] uppercase text-muted-foreground border-b sticky top-0 bg-card z-10">
+                          <tr>
+                            <th className="text-left py-2 px-2 sticky left-0 bg-card">Unidade</th>
+                            <th className="text-left py-2 px-2 sticky left-[110px] bg-card">Pacote</th>
+                            <th className="text-left py-2 px-2 sticky left-[230px] bg-card">Subpacote</th>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                              <th
+                                key={m}
+                                className={`text-right py-2 px-2 ${field === "real" ? "bg-blue-50 dark:bg-blue-950/30" : ""}`}
+                              >
+                                {MONTH_LABEL[String(m)]}
+                              </th>
+                            ))}
+                            <th className="text-right py-2 px-2 border-l">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {forecastRows
+                            .map((r, idx) => ({ r, idx }))
+                            .filter(({ r }) => unit === "all" || r.unit === unit)
+                            .map(({ r, idx }) => {
+                              const total = Array.from({ length: 12 }, (_, i) => i + 1)
+                                .reduce((s, m) => s + (r[field][String(m)] || 0), 0);
+                              return (
+                                <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
+                                  <td className="py-1 px-2 font-medium whitespace-nowrap sticky left-0 bg-card">{r.unit.replace("CD ", "")}</td>
+                                  <td className="py-1 px-2 text-muted-foreground whitespace-nowrap sticky left-[110px] bg-card">{r.pacote}</td>
+                                  <td className="py-1 px-2 whitespace-nowrap sticky left-[230px] bg-card">{r.subpacote || "—"}</td>
+                                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                                    const key = String(m);
+                                    return (
+                                      <td key={m} className="py-1 px-1">
+                                        <Input
+                                          type="number"
+                                          value={r[field][key] ?? ""}
+                                          placeholder="—"
+                                          onChange={(e) => updateRow(idx, field, key, e.target.value)}
+                                          className={`h-7 text-right tabular-nums text-xs w-24 ml-auto ${field === "real" ? "border-blue-200 focus-visible:ring-blue-500" : ""}`}
+                                        />
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="py-1 px-2 text-right tabular-nums font-semibold border-l">{fmtBRL(total)}</td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </TabsContent>
+                  ))}
+                </Tabs>
                 {unit === "all" && (
                   <p className="text-xs text-muted-foreground mt-3">
                     Dica: use o filtro <strong>Unidade</strong> no topo para editar uma CD por vez ({forecastRows.length} linhas no total).

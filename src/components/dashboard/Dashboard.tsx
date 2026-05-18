@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import data from "@/data/forecast.json";
 import KpiCard from "./KpiCard";
 import {
@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity, Database, RotateCcw, Save } from "lucide-react";
 
 type ForecastRow = {
   unit: string; pacote: string; subpacote: string | null;
@@ -63,14 +65,40 @@ const MONTH_LABEL: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const units = useMemo(() => ["all", ...Array.from(new Set(D.forecast.map((r) => r.unit)))], []);
+  const STORAGE_KEY = "forecast.rows.v1";
+  const [forecastRows, setForecastRows] = useState<ForecastRow[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) return JSON.parse(saved) as ForecastRow[];
+      } catch {}
+    }
+    return JSON.parse(JSON.stringify(D.forecast)) as ForecastRow[];
+  });
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(forecastRows)); } catch {}
+  }, [forecastRows]);
+
+  const units = useMemo(() => ["all", ...Array.from(new Set(forecastRows.map((r) => r.unit)))], [forecastRows]);
   const [unit, setUnit] = useState<string>("all");
   const [horizon, setHorizon] = useState<string>("5");
 
   const rowsFiltered = useMemo(
-    () => D.forecast.filter((r) => unit === "all" || r.unit === unit),
-    [unit],
+    () => forecastRows.filter((r) => unit === "all" || r.unit === unit),
+    [unit, forecastRows],
   );
+
+  const updateRow = (idx: number, field: "forecast" | "budget", month: string, val: string) => {
+    setForecastRows((prev) => {
+      const next = prev.slice();
+      const row = { ...next[idx], [field]: { ...next[idx][field] } };
+      const num = val === "" ? null : Number(val.replace(",", "."));
+      row[field][month] = Number.isFinite(num as number) ? (num as number) : null;
+      next[idx] = row;
+      return next;
+    });
+  };
+  const resetBase = () => setForecastRows(JSON.parse(JSON.stringify(D.forecast)) as ForecastRow[]);
 
   // KPIs: realizado YTD (1..4), forecast/budget para o horizonte selecionado
   const sumReal = rowsFiltered.reduce(
@@ -231,12 +259,13 @@ export default function Dashboard() {
         </section>
 
         <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full md:w-auto">
+          <TabsList className="grid grid-cols-3 md:grid-cols-6 w-full md:w-auto">
             <TabsTrigger value="overview">Visão Geral</TabsTrigger>
             <TabsTrigger value="pacotes">Pacotes</TabsTrigger>
             <TabsTrigger value="desvios">Desvios</TabsTrigger>
             <TabsTrigger value="unidades">Unidades</TabsTrigger>
             <TabsTrigger value="rston">Volume & R$/TON</TabsTrigger>
+            <TabsTrigger value="base">Base de Dados</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
@@ -514,6 +543,82 @@ export default function Dashboard() {
                     })}
                   </tbody>
                 </table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="base" className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-4 w-4 text-primary" />
+                    Base de dados — Edição de Forecast & Budget
+                  </CardTitle>
+                  <CardDescription>
+                    Edite os valores de Forecast e Budget (Mai/Jun/Jul). As alterações atualizam todos os gráficos e KPIs do painel automaticamente e são salvas no navegador.
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Badge variant="secondary" className="gap-1"><Save className="h-3 w-3" />Auto-salvo</Badge>
+                  <Button variant="outline" size="sm" onClick={resetBase}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" /> Restaurar original
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-[10px] uppercase text-muted-foreground border-b sticky top-0 bg-card">
+                    <tr>
+                      <th className="text-left py-2 px-2">Unidade</th>
+                      <th className="text-left py-2 px-2">Pacote</th>
+                      <th className="text-left py-2 px-2">Subpacote</th>
+                      <th className="text-right py-2 px-2 bg-muted/40">FC Mai</th>
+                      <th className="text-right py-2 px-2 bg-muted/40">FC Jun</th>
+                      <th className="text-right py-2 px-2 bg-muted/40">FC Jul</th>
+                      <th className="text-right py-2 px-2">Bud Mai</th>
+                      <th className="text-right py-2 px-2">Bud Jun</th>
+                      <th className="text-right py-2 px-2">Bud Jul</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {forecastRows
+                      .map((r, idx) => ({ r, idx }))
+                      .filter(({ r }) => unit === "all" || r.unit === unit)
+                      .map(({ r, idx }) => (
+                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="py-1 px-2 font-medium whitespace-nowrap">{r.unit.replace("CD ", "")}</td>
+                          <td className="py-1 px-2 text-muted-foreground whitespace-nowrap">{r.pacote}</td>
+                          <td className="py-1 px-2 whitespace-nowrap">{r.subpacote || "—"}</td>
+                          {(["5", "6", "7"] as const).map((m) => (
+                            <td key={`f${m}`} className="py-1 px-1 bg-muted/20">
+                              <Input
+                                type="number"
+                                value={r.forecast[m] ?? ""}
+                                onChange={(e) => updateRow(idx, "forecast", m, e.target.value)}
+                                className="h-7 text-right tabular-nums text-xs w-28 ml-auto"
+                              />
+                            </td>
+                          ))}
+                          {(["5", "6", "7"] as const).map((m) => (
+                            <td key={`b${m}`} className="py-1 px-1">
+                              <Input
+                                type="number"
+                                value={r.budget[m] ?? ""}
+                                onChange={(e) => updateRow(idx, "budget", m, e.target.value)}
+                                className="h-7 text-right tabular-nums text-xs w-28 ml-auto"
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {unit === "all" && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Dica: use o filtro <strong>Unidade</strong> no topo para editar uma CD por vez ({forecastRows.length} linhas no total).
+                  </p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

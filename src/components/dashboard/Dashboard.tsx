@@ -628,10 +628,10 @@ export default function Dashboard() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Database className="h-4 w-4 text-primary" />
-                    Base de dados — Edição de Forecast & Budget
+                    Base de dados — Real, Forecast & Budget (Jan–Dez/26)
                   </CardTitle>
                   <CardDescription>
-                    Edite os valores de Forecast e Budget (Mai/Jun/Jul). As alterações atualizam todos os gráficos e KPIs do painel automaticamente e são salvas no navegador.
+                    Preencha o <strong>Real do mês</strong> conforme os custos caem na conta. Edite também Forecast e Budget de qualquer mês até Dez/26. Todas as alterações refletem em tempo real na Visão Geral, KPIs e demais abas, e ficam salvas no navegador.
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -641,54 +641,67 @@ export default function Dashboard() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-[10px] uppercase text-muted-foreground border-b sticky top-0 bg-card">
-                    <tr>
-                      <th className="text-left py-2 px-2">Unidade</th>
-                      <th className="text-left py-2 px-2">Pacote</th>
-                      <th className="text-left py-2 px-2">Subpacote</th>
-                      <th className="text-right py-2 px-2 bg-muted/40">FC Mai</th>
-                      <th className="text-right py-2 px-2 bg-muted/40">FC Jun</th>
-                      <th className="text-right py-2 px-2 bg-muted/40">FC Jul</th>
-                      <th className="text-right py-2 px-2">Bud Mai</th>
-                      <th className="text-right py-2 px-2">Bud Jun</th>
-                      <th className="text-right py-2 px-2">Bud Jul</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {forecastRows
-                      .map((r, idx) => ({ r, idx }))
-                      .filter(({ r }) => unit === "all" || r.unit === unit)
-                      .map(({ r, idx }) => (
-                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
-                          <td className="py-1 px-2 font-medium whitespace-nowrap">{r.unit.replace("CD ", "")}</td>
-                          <td className="py-1 px-2 text-muted-foreground whitespace-nowrap">{r.pacote}</td>
-                          <td className="py-1 px-2 whitespace-nowrap">{r.subpacote || "—"}</td>
-                          {(["5", "6", "7"] as const).map((m) => (
-                            <td key={`f${m}`} className="py-1 px-1 bg-muted/20">
-                              <Input
-                                type="number"
-                                value={r.forecast[m] ?? ""}
-                                onChange={(e) => updateRow(idx, "forecast", m, e.target.value)}
-                                className="h-7 text-right tabular-nums text-xs w-28 ml-auto"
-                              />
-                            </td>
-                          ))}
-                          {(["5", "6", "7"] as const).map((m) => (
-                            <td key={`b${m}`} className="py-1 px-1">
-                              <Input
-                                type="number"
-                                value={r.budget[m] ?? ""}
-                                onChange={(e) => updateRow(idx, "budget", m, e.target.value)}
-                                className="h-7 text-right tabular-nums text-xs w-28 ml-auto"
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              <CardContent className="space-y-3">
+                <Tabs defaultValue="real" className="space-y-3">
+                  <TabsList>
+                    <TabsTrigger value="real">Real do mês</TabsTrigger>
+                    <TabsTrigger value="forecast">Forecast</TabsTrigger>
+                    <TabsTrigger value="budget">Budget</TabsTrigger>
+                  </TabsList>
+                  {(["real", "forecast", "budget"] as const).map((field) => (
+                    <TabsContent key={field} value={field} className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="text-[10px] uppercase text-muted-foreground border-b sticky top-0 bg-card z-10">
+                          <tr>
+                            <th className="text-left py-2 px-2 sticky left-0 bg-card">Unidade</th>
+                            <th className="text-left py-2 px-2 sticky left-[110px] bg-card">Pacote</th>
+                            <th className="text-left py-2 px-2 sticky left-[230px] bg-card">Subpacote</th>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                              <th
+                                key={m}
+                                className={`text-right py-2 px-2 ${field === "real" ? "bg-blue-50 dark:bg-blue-950/30" : ""}`}
+                              >
+                                {MONTH_LABEL[String(m)]}
+                              </th>
+                            ))}
+                            <th className="text-right py-2 px-2 border-l">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {forecastRows
+                            .map((r, idx) => ({ r, idx }))
+                            .filter(({ r }) => unit === "all" || r.unit === unit)
+                            .map(({ r, idx }) => {
+                              const total = Array.from({ length: 12 }, (_, i) => i + 1)
+                                .reduce((s, m) => s + (r[field][String(m)] || 0), 0);
+                              return (
+                                <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
+                                  <td className="py-1 px-2 font-medium whitespace-nowrap sticky left-0 bg-card">{r.unit.replace("CD ", "")}</td>
+                                  <td className="py-1 px-2 text-muted-foreground whitespace-nowrap sticky left-[110px] bg-card">{r.pacote}</td>
+                                  <td className="py-1 px-2 whitespace-nowrap sticky left-[230px] bg-card">{r.subpacote || "—"}</td>
+                                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                                    const key = String(m);
+                                    return (
+                                      <td key={m} className="py-1 px-1">
+                                        <Input
+                                          type="number"
+                                          value={r[field][key] ?? ""}
+                                          placeholder="—"
+                                          onChange={(e) => updateRow(idx, field, key, e.target.value)}
+                                          className={`h-7 text-right tabular-nums text-xs w-24 ml-auto ${field === "real" ? "border-blue-200 focus-visible:ring-blue-500" : ""}`}
+                                        />
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="py-1 px-2 text-right tabular-nums font-semibold border-l">{fmtBRL(total)}</td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </TabsContent>
+                  ))}
+                </Tabs>
                 {unit === "all" && (
                   <p className="text-xs text-muted-foreground mt-3">
                     Dica: use o filtro <strong>Unidade</strong> no topo para editar uma CD por vez ({forecastRows.length} linhas no total).

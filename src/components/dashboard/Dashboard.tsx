@@ -286,12 +286,25 @@ export default function Dashboard() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={horizon} onValueChange={setHorizon}>
-              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Horizonte" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">Mai/26</SelectItem>
-                <SelectItem value="6">Jun/26</SelectItem>
-                <SelectItem value="7">Jul/26</SelectItem>
+            <Select value={period} onValueChange={setPeriod}>
+              <SelectTrigger className="w-[220px]"><SelectValue placeholder="Período" /></SelectTrigger>
+              <SelectContent className="max-h-[420px]">
+                <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Mês</div>
+                {PERIODS.filter((p) => p.value.startsWith("m")).map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+                <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Bimestre</div>
+                {PERIODS.filter((p) => p.value.startsWith("b")).map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+                <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Trimestre</div>
+                {PERIODS.filter((p) => p.value.startsWith("q")).map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+                <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Outros</div>
+                {PERIODS.filter((p) => ["h1", "h2", "ytd", "fy"].includes(p.value)).map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -300,9 +313,18 @@ export default function Dashboard() {
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
         <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <KpiCard icon={DollarSign} label="Realizado YTD" value={fmtBRL(sumReal)} hint="Jan–Abr/26" />
-          <KpiCard icon={Target} label={`Forecast ${MONTH_LABEL[horizon]}/26`} value={fmtBRL(sumForecast)} />
-          <KpiCard icon={Activity} label={`Budget ${MONTH_LABEL[horizon]}/26`} value={fmtBRL(sumBudget)} />
+          <KpiCard
+            icon={DollarSign}
+            label="Realizado YTD"
+            value={fmtBRL(sumReal)}
+            hint={
+              realMonths.length
+                ? `${MONTH_LABEL[String(realMonths[0])]}–${MONTH_LABEL[String(realMonths[realMonths.length - 1])]}/26`
+                : "—"
+            }
+          />
+          <KpiCard icon={Target} label={`Forecast ${periodLabel}`} value={fmtBRL(sumForecast)} hint={sumRealPeriod ? `Real no período: ${fmtBRL(sumRealPeriod)}` : undefined} />
+          <KpiCard icon={Activity} label={`Budget ${periodLabel}`} value={fmtBRL(sumBudget)} />
           <KpiCard icon={variance > 0 ? TrendingUp : TrendingDown}
             label="Desvio FC vs Bud" value={fmtBRL(variance)}
             tone={variance > 0 ? "bad" : "good"}
@@ -347,7 +369,7 @@ export default function Dashboard() {
               <Card className="lg:col-span-2">
                 <CardHeader>
                   <CardTitle>Forecast por unidade</CardTitle>
-                  <CardDescription>{MONTH_LABEL[horizon]}/26 — comparação FC vs Budget</CardDescription>
+                  <CardDescription>{periodLabel} — comparação FC vs Budget</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={320}>
@@ -411,7 +433,7 @@ export default function Dashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-destructive" />
-                  Top desvios — Forecast vs Budget ({MONTH_LABEL[horizon]}/26)
+                  Top desvios — Forecast vs Budget ({periodLabel})
                 </CardTitle>
                 <CardDescription>Subpacotes que mais distorcem o orçamento</CardDescription>
               </CardHeader>
@@ -496,7 +518,7 @@ export default function Dashboard() {
                     <CardTitle className="text-base flex items-center gap-2">
                       <Building2 className="h-4 w-4 text-primary" />{u.unit}
                     </CardTitle>
-                    <CardDescription>{MONTH_LABEL[horizon]}/26</CardDescription>
+                    <CardDescription>{periodLabel}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="flex justify-between text-sm">

@@ -65,7 +65,7 @@ const MONTH_LABEL: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const STORAGE_KEY = "forecast.rows.v1";
+  const STORAGE_KEY = "forecast.rows.v2";
   const [forecastRows, setForecastRows] = useState<ForecastRow[]>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -81,14 +81,45 @@ export default function Dashboard() {
 
   const units = useMemo(() => ["all", ...Array.from(new Set(forecastRows.map((r) => r.unit)))], [forecastRows]);
   const [unit, setUnit] = useState<string>("all");
-  const [horizon, setHorizon] = useState<string>("5");
+  const [period, setPeriod] = useState<string>("m5");
+
+  // Períodos selecionáveis (cada um expande para um conjunto de meses 1..12)
+  const PERIODS: { value: string; label: string; months: number[] }[] = useMemo(() => [
+    ...Array.from({ length: 12 }, (_, i) => ({
+      value: `m${i + 1}`, label: `${MONTH_LABEL[String(i + 1)]}/26`, months: [i + 1],
+    })),
+    { value: "b1", label: "Bim. Jan–Fev", months: [1, 2] },
+    { value: "b2", label: "Bim. Mar–Abr", months: [3, 4] },
+    { value: "b3", label: "Bim. Mai–Jun", months: [5, 6] },
+    { value: "b4", label: "Bim. Jul–Ago", months: [7, 8] },
+    { value: "b5", label: "Bim. Set–Out", months: [9, 10] },
+    { value: "b6", label: "Bim. Nov–Dez", months: [11, 12] },
+    { value: "q1", label: "T1 (Jan–Mar)", months: [1, 2, 3] },
+    { value: "q2", label: "T2 (Abr–Jun)", months: [4, 5, 6] },
+    { value: "q3", label: "T3 (Jul–Set)", months: [7, 8, 9] },
+    { value: "q4", label: "T4 (Out–Dez)", months: [10, 11, 12] },
+    { value: "h1", label: "1º Semestre", months: [1, 2, 3, 4, 5, 6] },
+    { value: "h2", label: "2º Semestre", months: [7, 8, 9, 10, 11, 12] },
+    { value: "ytd", label: "YTD (Real)", months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+    { value: "fy", label: "Ano 2026", months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+  ], []);
+  const periodMonths = useMemo(
+    () => PERIODS.find((p) => p.value === period)?.months ?? [5],
+    [period, PERIODS],
+  );
+  const periodLabel = useMemo(
+    () => PERIODS.find((p) => p.value === period)?.label ?? "",
+    [period, PERIODS],
+  );
+  // Para tabelas detalhadas que mostram um mês de referência (último do período)
+  const refMonth = String(periodMonths[periodMonths.length - 1]);
 
   const rowsFiltered = useMemo(
     () => forecastRows.filter((r) => unit === "all" || r.unit === unit),
     [unit, forecastRows],
   );
 
-  const updateRow = (idx: number, field: "forecast" | "budget", month: string, val: string) => {
+  const updateRow = (idx: number, field: "real" | "forecast" | "budget", month: string, val: string) => {
     setForecastRows((prev) => {
       const next = prev.slice();
       const row = { ...next[idx], [field]: { ...next[idx][field] } };
@@ -100,21 +131,39 @@ export default function Dashboard() {
   };
   const resetBase = () => setForecastRows(JSON.parse(JSON.stringify(D.forecast)) as ForecastRow[]);
 
-  // KPIs: realizado YTD (1..4), forecast/budget para o horizonte selecionado
+  // Realizado YTD = soma de todos os meses com Real preenchido (1..12)
+  const realMonths = useMemo(() => {
+    const set = new Set<number>();
+    forecastRows.forEach((r) => {
+      for (let m = 1; m <= 12; m++) if (r.real[String(m)] != null) set.add(m);
+    });
+    return Array.from(set).sort((a, b) => a - b);
+  }, [forecastRows]);
   const sumReal = rowsFiltered.reduce(
-    (a, r) => a + [1, 2, 3, 4].reduce((s, m) => s + (r.real[String(m)] || 0), 0),
+    (a, r) => a + realMonths.reduce((s, m) => s + (r.real[String(m)] || 0), 0),
     0,
   );
-  const sumForecast = rowsFiltered.reduce((a, r) => a + (r.forecast[horizon] || 0), 0);
-  const sumBudget = rowsFiltered.reduce((a, r) => a + (r.budget[horizon] || 0), 0);
+  // Soma agregada do período selecionado
+  const sumRealPeriod = rowsFiltered.reduce(
+    (a, r) => a + periodMonths.reduce((s, m) => s + (r.real[String(m)] || 0), 0),
+    0,
+  );
+  const sumForecast = rowsFiltered.reduce(
+    (a, r) => a + periodMonths.reduce((s, m) => s + (r.forecast[String(m)] || 0), 0),
+    0,
+  );
+  const sumBudget = rowsFiltered.reduce(
+    (a, r) => a + periodMonths.reduce((s, m) => s + (r.budget[String(m)] || 0), 0),
+    0,
+  );
   const variance = sumForecast - sumBudget;
   const variancePct = sumBudget ? variance / sumBudget : 0;
   const sumM1 = rowsFiltered.reduce((a, r) => a + (r.m1 || 0), 0);
 
-  // Evolução mensal (real meses 1-4, forecast 5-7) - agregado
+  // Evolução mensal — 12 meses, Real onde existir, FC/Bud onde existirem
   const monthly = useMemo(() => {
     const arr: { name: string; Realizado: number | null; Forecast: number | null; Budget: number | null }[] = [];
-    for (let m = 1; m <= 7; m++) {
+    for (let m = 1; m <= 12; m++) {
       const key = String(m);
       let real = 0, fc = 0, bud = 0, hasReal = false, hasFc = false, hasBud = false;
       rowsFiltered.forEach((r) => {
@@ -132,56 +181,60 @@ export default function Dashboard() {
     return arr;
   }, [rowsFiltered]);
 
-  // Por pacote
+  // Por pacote — Realizado e FC/Bud no período selecionado
   const byPacote = useMemo(() => {
     const m = new Map<string, { name: string; Realizado: number; Forecast: number; Budget: number }>();
     rowsFiltered.forEach((r) => {
       const e = m.get(r.pacote) || { name: r.pacote, Realizado: 0, Forecast: 0, Budget: 0 };
-      [1, 2, 3, 4].forEach((mo) => { e.Realizado += r.real[String(mo)] || 0; });
-      e.Forecast += r.forecast[horizon] || 0;
-      e.Budget += r.budget[horizon] || 0;
+      periodMonths.forEach((mo) => {
+        e.Realizado += r.real[String(mo)] || 0;
+        e.Forecast += r.forecast[String(mo)] || 0;
+        e.Budget += r.budget[String(mo)] || 0;
+      });
       m.set(r.pacote, e);
     });
     return Array.from(m.values()).sort((a, b) => (b.Realizado + b.Forecast) - (a.Realizado + a.Forecast));
-  }, [rowsFiltered, horizon]);
+  }, [rowsFiltered, periodMonths]);
 
-  // Top desvios por subpacote (Forecast vs Budget) no horizonte
+  // Top desvios por subpacote (Forecast vs Budget) no período
   const desvios = useMemo(() => {
     return rowsFiltered
-      .map((r) => ({
-        unit: r.unit,
-        pacote: r.pacote,
-        subpacote: r.subpacote || "—",
-        forecast: r.forecast[horizon] || 0,
-        budget: r.budget[horizon] || 0,
-        delta: (r.forecast[horizon] || 0) - (r.budget[horizon] || 0),
-      }))
+      .map((r) => {
+        const fc = periodMonths.reduce((s, m) => s + (r.forecast[String(m)] || 0), 0);
+        const bud = periodMonths.reduce((s, m) => s + (r.budget[String(m)] || 0), 0);
+        return {
+          unit: r.unit, pacote: r.pacote, subpacote: r.subpacote || "—",
+          forecast: fc, budget: bud, delta: fc - bud,
+        };
+      })
       .filter((r) => Math.abs(r.delta) > 1000)
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 12);
-  }, [rowsFiltered, horizon]);
+  }, [rowsFiltered, periodMonths]);
 
-  // Por unidade (DIN TT)
+  // Por unidade (DIN TT) — soma no período (apenas meses 5..7 estão na base original)
   const unitTable = useMemo(() => {
     return D.dintt.filter((d) => d.unit !== "Total Geral").map((d) => {
-      const fc = d.forecast[horizon];
-      const bud = d.budget[horizon];
+      const fc = periodMonths.reduce((s, m) => s + (d.forecast[String(m)] || 0), 0);
+      const bud = periodMonths.reduce((s, m) => s + (d.budget[String(m)] || 0), 0);
+      const hasFc = periodMonths.some((m) => d.forecast[String(m)] != null);
+      const hasBud = periodMonths.some((m) => d.budget[String(m)] != null);
       return {
         unit: d.unit,
-        forecast: fc,
-        budget: bud,
-        delta: fc != null && bud != null ? fc - bud : null,
-        deltaPct: fc != null && bud != null && bud !== 0 ? (fc - bud) / bud : null,
+        forecast: hasFc ? fc : null,
+        budget: hasBud ? bud : null,
+        delta: hasFc && hasBud ? fc - bud : null,
+        deltaPct: hasFc && hasBud && bud !== 0 ? (fc - bud) / bud : null,
       };
     });
-  }, [horizon]);
+  }, [periodMonths]);
 
   const pieByUnit = useMemo(() => {
     return D.dintt.filter((d) => d.unit !== "Total Geral").map((d) => ({
       name: d.unit,
-      value: Math.round(d.forecast[horizon] || 0),
+      value: Math.round(periodMonths.reduce((s, m) => s + (d.forecast[String(m)] || 0), 0)),
     }));
-  }, [horizon]);
+  }, [periodMonths]);
 
   // Volume vs custo (R$/TON)
   const rtonChart = useMemo(() => {

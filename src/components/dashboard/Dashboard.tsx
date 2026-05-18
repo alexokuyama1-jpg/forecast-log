@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import data from "@/data/forecast.json";
 import KpiCard from "./KpiCard";
 import {
@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity, Database, RotateCcw, Save } from "lucide-react";
 
 type ForecastRow = {
   unit: string; pacote: string; subpacote: string | null;
@@ -63,14 +65,40 @@ const MONTH_LABEL: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const units = useMemo(() => ["all", ...Array.from(new Set(D.forecast.map((r) => r.unit)))], []);
+  const STORAGE_KEY = "forecast.rows.v1";
+  const [forecastRows, setForecastRows] = useState<ForecastRow[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) return JSON.parse(saved) as ForecastRow[];
+      } catch {}
+    }
+    return JSON.parse(JSON.stringify(D.forecast)) as ForecastRow[];
+  });
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(forecastRows)); } catch {}
+  }, [forecastRows]);
+
+  const units = useMemo(() => ["all", ...Array.from(new Set(forecastRows.map((r) => r.unit)))], [forecastRows]);
   const [unit, setUnit] = useState<string>("all");
   const [horizon, setHorizon] = useState<string>("5");
 
   const rowsFiltered = useMemo(
-    () => D.forecast.filter((r) => unit === "all" || r.unit === unit),
-    [unit],
+    () => forecastRows.filter((r) => unit === "all" || r.unit === unit),
+    [unit, forecastRows],
   );
+
+  const updateRow = (idx: number, field: "forecast" | "budget", month: string, val: string) => {
+    setForecastRows((prev) => {
+      const next = prev.slice();
+      const row = { ...next[idx], [field]: { ...next[idx][field] } };
+      const num = val === "" ? null : Number(val.replace(",", "."));
+      row[field][month] = Number.isFinite(num as number) ? (num as number) : null;
+      next[idx] = row;
+      return next;
+    });
+  };
+  const resetBase = () => setForecastRows(JSON.parse(JSON.stringify(D.forecast)) as ForecastRow[]);
 
   // KPIs: realizado YTD (1..4), forecast/budget para o horizonte selecionado
   const sumReal = rowsFiltered.reduce(
@@ -231,12 +259,13 @@ export default function Dashboard() {
         </section>
 
         <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full md:w-auto">
+          <TabsList className="grid grid-cols-3 md:grid-cols-6 w-full md:w-auto">
             <TabsTrigger value="overview">Visão Geral</TabsTrigger>
             <TabsTrigger value="pacotes">Pacotes</TabsTrigger>
             <TabsTrigger value="desvios">Desvios</TabsTrigger>
             <TabsTrigger value="unidades">Unidades</TabsTrigger>
             <TabsTrigger value="rston">Volume & R$/TON</TabsTrigger>
+            <TabsTrigger value="base">Base de Dados</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">

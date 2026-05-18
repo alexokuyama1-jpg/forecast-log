@@ -546,6 +546,82 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="base" className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-4 w-4 text-primary" />
+                    Base de dados — Edição de Forecast & Budget
+                  </CardTitle>
+                  <CardDescription>
+                    Edite os valores de Forecast e Budget (Mai/Jun/Jul). As alterações atualizam todos os gráficos e KPIs do painel automaticamente e são salvas no navegador.
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Badge variant="secondary" className="gap-1"><Save className="h-3 w-3" />Auto-salvo</Badge>
+                  <Button variant="outline" size="sm" onClick={resetBase}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" /> Restaurar original
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-[10px] uppercase text-muted-foreground border-b sticky top-0 bg-card">
+                    <tr>
+                      <th className="text-left py-2 px-2">Unidade</th>
+                      <th className="text-left py-2 px-2">Pacote</th>
+                      <th className="text-left py-2 px-2">Subpacote</th>
+                      <th className="text-right py-2 px-2 bg-muted/40">FC Mai</th>
+                      <th className="text-right py-2 px-2 bg-muted/40">FC Jun</th>
+                      <th className="text-right py-2 px-2 bg-muted/40">FC Jul</th>
+                      <th className="text-right py-2 px-2">Bud Mai</th>
+                      <th className="text-right py-2 px-2">Bud Jun</th>
+                      <th className="text-right py-2 px-2">Bud Jul</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {forecastRows
+                      .map((r, idx) => ({ r, idx }))
+                      .filter(({ r }) => unit === "all" || r.unit === unit)
+                      .map(({ r, idx }) => (
+                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="py-1 px-2 font-medium whitespace-nowrap">{r.unit.replace("CD ", "")}</td>
+                          <td className="py-1 px-2 text-muted-foreground whitespace-nowrap">{r.pacote}</td>
+                          <td className="py-1 px-2 whitespace-nowrap">{r.subpacote || "—"}</td>
+                          {(["5", "6", "7"] as const).map((m) => (
+                            <td key={`f${m}`} className="py-1 px-1 bg-muted/20">
+                              <Input
+                                type="number"
+                                value={r.forecast[m] ?? ""}
+                                onChange={(e) => updateRow(idx, "forecast", m, e.target.value)}
+                                className="h-7 text-right tabular-nums text-xs w-28 ml-auto"
+                              />
+                            </td>
+                          ))}
+                          {(["5", "6", "7"] as const).map((m) => (
+                            <td key={`b${m}`} className="py-1 px-1">
+                              <Input
+                                type="number"
+                                value={r.budget[m] ?? ""}
+                                onChange={(e) => updateRow(idx, "budget", m, e.target.value)}
+                                className="h-7 text-right tabular-nums text-xs w-28 ml-auto"
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {unit === "all" && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Dica: use o filtro <strong>Unidade</strong> no topo para editar uma CD por vez ({forecastRows.length} linhas no total).
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
 
         <footer className="text-xs text-muted-foreground text-center pt-6">

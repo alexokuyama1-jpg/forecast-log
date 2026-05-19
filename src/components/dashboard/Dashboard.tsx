@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import data from "@/data/forecast.json";
 import KpiCard from "./KpiCard";
 import {
@@ -11,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity, Database, RotateCcw, Save } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity, Database, RotateCcw, Save, LogOut, Scale } from "lucide-react";
 
 type ForecastRow = {
   unit: string; pacote: string; subpacote: string | null;
@@ -65,6 +68,12 @@ const MONTH_LABEL: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const nav = useNavigate();
+  const { session, loading: authLoading } = useAuth();
+  useEffect(() => {
+    if (!authLoading && !session) nav({ to: "/login" });
+  }, [authLoading, session, nav]);
+
   const STORAGE_KEY = "forecast.rows.v2";
   const [forecastRows, setForecastRows] = useState<ForecastRow[]>(() => {
     if (typeof window !== "undefined") {
@@ -155,6 +164,9 @@ export default function Dashboard() {
   );
   const variance = sumForecast - sumBudget;
   const variancePct = sumBudget ? variance / sumBudget : 0;
+  // Atual (Real) vs Budget no período
+  const atualVsBud = sumRealPeriod - sumBudget;
+  const atualVsBudPct = sumBudget ? atualVsBud / sumBudget : 0;
   const sumM1 = rowsFiltered.reduce((a, r) => a + (r.m1 || 0), 0);
 
   // Evolução mensal — 12 meses, Real onde existir, FC/Bud onde existirem
@@ -234,21 +246,56 @@ export default function Dashboard() {
   }, [periodMonths]);
 
   // Volume vs custo (R$/TON)
-  const rtonChart = useMemo(() => {
-    return D.rton.rston.map((row) => ({
-      name: row.unit.replace("CD ", ""),
-      "R$/TON Forecast": Math.round((row.forecast05 || 0) * 100) / 100,
-      "R$/TON Budget": Math.round((row.budget05 || 0) * 100) / 100,
-    }));
-  }, []);
-
-  const volumeChart = useMemo(() => {
-    return D.rton.volume.map((row) => ({
-      name: row.unit.replace("CD ", ""),
-      "Volume Forecast": Math.round(row.forecast05 || 0),
-      "Volume Budget": Math.round(row.budget05 || 0),
-    }));
-  }, []);
+  // R$/TON dinâmico por período + unidade. Fórmula: (Custo / Volume) * 1000
+  // (Volume em kg → resultado em R$/TON). Considera meses 5..7 e Real onde houver.
+  const sumBlockForPeriod = (
+    row: RtonBlock,
+    field: "forecast" | "budget" | "real",
+  ) => {
+    let s = 0;
+    periodMonths.forEach((m) => {
+      if (field === "real") s += row.real[String(m)] || 0;
+      else if (m === 5) s += (field === "forecast" ? row.forecast05 : row.budget05) || 0;
+      else if (m === 6) s += (field === "forecast" ? row.forecast06 : row.budget06) || 0;
+      else if (m === 7) s += (field === "forecast" ? row.forecast07 : row.budget07) || 0;
+    });
+    return s;
+  };
+  const rtonRows = useMemo(() => {
+    const idxByUnit = new Map(D.rton.volume.map((v, i) => [v.unit, i]));
+    return D.rton.volume
+      .filter((v) => unit === "all" || v.unit === unit)
+      .map((v) => {
+        const i = idxByUnit.get(v.unit)!;
+        const c = D.rton.custos[i];
+        const volFc = sumBlockForPeriod(v, "forecast");
+        const volBud = sumBlockForPeriod(v, "budget");
+        const volReal = sumBlockForPeriod(v, "real");
+        const cFc = sumBlockForPeriod(c, "forecast");
+        const cBud = sumBlockForPeriod(c, "budget");
+        const cReal = sumBlockForPeriod(c, "real");
+        return {
+          name: v.unit.replace("CD ", ""),
+          unit: v.unit,
+          volFc, volBud, volReal, cFc, cBud, cReal,
+          rtonFc: volFc ? (cFc / volFc) * 1000 : 0,
+          rtonBud: volBud ? (cBud / volBud) * 1000 : 0,
+          rtonReal: volReal ? (cReal / volReal) * 1000 : 0,
+        };
+      });
+  }, [unit, periodMonths]);
+  const rtonChart = useMemo(() => rtonRows.map((r) => ({
+    name: r.name,
+    "R$/TON Real": Math.round(r.rtonReal * 100) / 100,
+    "R$/TON Forecast": Math.round(r.rtonFc * 100) / 100,
+    "R$/TON Budget": Math.round(r.rtonBud * 100) / 100,
+  })), [rtonRows]);
+  const volumeChart = useMemo(() => rtonRows.map((r) => ({
+    name: r.name,
+    "Volume Real": Math.round(r.volReal),
+    "Volume Forecast": Math.round(r.volFc),
+    "Volume Budget": Math.round(r.volBud),
+  })), [rtonRows]);
 
   // Principais contas
   const topAccounts = useMemo(() => {
@@ -304,12 +351,15 @@ export default function Dashboard() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" size="sm" onClick={async () => { await supabase.auth.signOut(); nav({ to: "/login" }); }}>
+              <LogOut className="h-3.5 w-3.5 mr-1" /> Sair
+            </Button>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard
             icon={DollarSign}
             label="Realizado YTD"
@@ -326,6 +376,10 @@ export default function Dashboard() {
             label="Desvio FC vs Bud" value={fmtBRL(variance)}
             tone={variance > 0 ? "bad" : "good"}
             hint={`${variancePct >= 0 ? "+" : ""}${fmtPct(variancePct)}`} />
+          <KpiCard icon={Scale}
+            label={`Atual vs Bud ${periodLabel}`} value={fmtBRL(atualVsBud)}
+            tone={atualVsBud > 0 ? "bad" : "good"}
+            hint={`${atualVsBudPct >= 0 ? "+" : ""}${fmtPct(atualVsBudPct)} · Real ${fmtBRL(sumRealPeriod)}`} />
           <KpiCard icon={AlertTriangle} label="Var. vs M-1" value={fmtBRL(sumM1)}
             tone={sumM1 > 0 ? "warn" : "good"} hint="ajuste do mês" />
         </section>
@@ -542,8 +596,8 @@ export default function Dashboard() {
             <div className="grid lg:grid-cols-2 gap-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Volume (TON) — Mai/26</CardTitle>
-                  <CardDescription>Forecast vs Budget por unidade</CardDescription>
+                  <CardTitle>Volume (kg) — {periodLabel}</CardTitle>
+                  <CardDescription>Real, Forecast e Budget por unidade</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -553,6 +607,7 @@ export default function Dashboard() {
                       <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
                       <Tooltip formatter={(v: number) => fmtNum(v)} />
                       <Legend />
+                      <Bar dataKey="Volume Real" fill="#2563eb" />
                       <Bar dataKey="Volume Forecast" fill="#16a34a" />
                       <Bar dataKey="Volume Budget" fill="#94a3b8" />
                     </BarChart>
@@ -561,8 +616,8 @@ export default function Dashboard() {
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>R$/TON — Mai/26</CardTitle>
-                  <CardDescription>Custo unitário por unidade</CardDescription>
+                  <CardTitle>R$/TON — {periodLabel}</CardTitle>
+                  <CardDescription>Custo unitário = (Custo ÷ Volume) × 1000</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -572,7 +627,8 @@ export default function Dashboard() {
                       <YAxis tick={{ fontSize: 11 }} />
                       <Tooltip formatter={(v: number) => `R$ ${fmtNum(v, 2)}`} />
                       <Legend />
-                      <Bar dataKey="R$/TON Forecast" fill="#2563eb" />
+                      <Bar dataKey="R$/TON Real" fill="#2563eb" />
+                      <Bar dataKey="R$/TON Forecast" fill="#16a34a" />
                       <Bar dataKey="R$/TON Budget" fill="#f59e0b" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -582,37 +638,40 @@ export default function Dashboard() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Tabela detalhada — Volume, Custos e R$/TON</CardTitle>
+                <CardTitle>Tabela detalhada — Volume, Custos e R$/TON ({periodLabel})</CardTitle>
+                <CardDescription>Filtrada por unidade e período selecionados no topo</CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="text-xs uppercase text-muted-foreground border-b">
                     <tr>
                       <th className="text-left py-2 px-2">Unidade</th>
-                      <th className="text-right py-2 px-2">Vol. FC Mai</th>
-                      <th className="text-right py-2 px-2">Vol. Bud Mai</th>
-                      <th className="text-right py-2 px-2">Custo FC Mai</th>
-                      <th className="text-right py-2 px-2">Custo Bud Mai</th>
+                      <th className="text-right py-2 px-2">Vol. Real</th>
+                      <th className="text-right py-2 px-2">Vol. FC</th>
+                      <th className="text-right py-2 px-2">Vol. Bud</th>
+                      <th className="text-right py-2 px-2">Custo Real</th>
+                      <th className="text-right py-2 px-2">Custo FC</th>
+                      <th className="text-right py-2 px-2">Custo Bud</th>
+                      <th className="text-right py-2 px-2">R$/TON Real</th>
                       <th className="text-right py-2 px-2">R$/TON FC</th>
                       <th className="text-right py-2 px-2">R$/TON Bud</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {D.rton.volume.map((v, i) => {
-                      const c = D.rton.custos[i];
-                      const r = D.rton.rston[i];
-                      return (
-                        <tr key={i} className="border-b last:border-0">
-                          <td className="py-2 px-2 font-medium">{v.unit}</td>
-                          <td className="py-2 px-2 text-right tabular-nums">{fmtNum(v.forecast05)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtNum(v.budget05)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(c.forecast05)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtBRL(c.budget05)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums font-semibold">R$ {fmtNum(r.forecast05, 2)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">R$ {fmtNum(r.budget05, 2)}</td>
-                        </tr>
-                      );
-                    })}
+                    {rtonRows.map((r, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="py-2 px-2 font-medium">{r.unit}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{fmtNum(r.volReal)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{fmtNum(r.volFc)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtNum(r.volBud)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(r.cReal)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(r.cFc)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtBRL(r.cBud)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums font-semibold">R$ {fmtNum(r.rtonReal, 2)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">R$ {fmtNum(r.rtonFc, 2)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">R$ {fmtNum(r.rtonBud, 2)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </CardContent>

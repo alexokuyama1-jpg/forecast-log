@@ -164,6 +164,9 @@ export default function Dashboard() {
   );
   const variance = sumForecast - sumBudget;
   const variancePct = sumBudget ? variance / sumBudget : 0;
+  // Atual (Real) vs Budget no período
+  const atualVsBud = sumRealPeriod - sumBudget;
+  const atualVsBudPct = sumBudget ? atualVsBud / sumBudget : 0;
   const sumM1 = rowsFiltered.reduce((a, r) => a + (r.m1 || 0), 0);
 
   // Evolução mensal — 12 meses, Real onde existir, FC/Bud onde existirem

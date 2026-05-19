@@ -68,6 +68,12 @@ const MONTH_LABEL: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const nav = useNavigate();
+  const { session, loading: authLoading } = useAuth();
+  useEffect(() => {
+    if (!authLoading && !session) nav({ to: "/login" });
+  }, [authLoading, session, nav]);
+
   const STORAGE_KEY = "forecast.rows.v2";
   const [forecastRows, setForecastRows] = useState<ForecastRow[]>(() => {
     if (typeof window !== "undefined") {

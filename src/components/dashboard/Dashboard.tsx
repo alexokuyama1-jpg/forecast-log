@@ -246,21 +246,56 @@ export default function Dashboard() {
   }, [periodMonths]);
 
   // Volume vs custo (R$/TON)
-  const rtonChart = useMemo(() => {
-    return D.rton.rston.map((row) => ({
-      name: row.unit.replace("CD ", ""),
-      "R$/TON Forecast": Math.round((row.forecast05 || 0) * 100) / 100,
-      "R$/TON Budget": Math.round((row.budget05 || 0) * 100) / 100,
-    }));
-  }, []);
-
-  const volumeChart = useMemo(() => {
-    return D.rton.volume.map((row) => ({
-      name: row.unit.replace("CD ", ""),
-      "Volume Forecast": Math.round(row.forecast05 || 0),
-      "Volume Budget": Math.round(row.budget05 || 0),
-    }));
-  }, []);
+  // R$/TON dinâmico por período + unidade. Fórmula: (Custo / Volume) * 1000
+  // (Volume em kg → resultado em R$/TON). Considera meses 5..7 e Real onde houver.
+  const sumBlockForPeriod = (
+    row: RtonBlock,
+    field: "forecast" | "budget" | "real",
+  ) => {
+    let s = 0;
+    periodMonths.forEach((m) => {
+      if (field === "real") s += row.real[String(m)] || 0;
+      else if (m === 5) s += (field === "forecast" ? row.forecast05 : row.budget05) || 0;
+      else if (m === 6) s += (field === "forecast" ? row.forecast06 : row.budget06) || 0;
+      else if (m === 7) s += (field === "forecast" ? row.forecast07 : row.budget07) || 0;
+    });
+    return s;
+  };
+  const rtonRows = useMemo(() => {
+    const idxByUnit = new Map(D.rton.volume.map((v, i) => [v.unit, i]));
+    return D.rton.volume
+      .filter((v) => unit === "all" || v.unit === unit)
+      .map((v) => {
+        const i = idxByUnit.get(v.unit)!;
+        const c = D.rton.custos[i];
+        const volFc = sumBlockForPeriod(v, "forecast");
+        const volBud = sumBlockForPeriod(v, "budget");
+        const volReal = sumBlockForPeriod(v, "real");
+        const cFc = sumBlockForPeriod(c, "forecast");
+        const cBud = sumBlockForPeriod(c, "budget");
+        const cReal = sumBlockForPeriod(c, "real");
+        return {
+          name: v.unit.replace("CD ", ""),
+          unit: v.unit,
+          volFc, volBud, volReal, cFc, cBud, cReal,
+          rtonFc: volFc ? (cFc / volFc) * 1000 : 0,
+          rtonBud: volBud ? (cBud / volBud) * 1000 : 0,
+          rtonReal: volReal ? (cReal / volReal) * 1000 : 0,
+        };
+      });
+  }, [unit, periodMonths]);
+  const rtonChart = useMemo(() => rtonRows.map((r) => ({
+    name: r.name,
+    "R$/TON Real": Math.round(r.rtonReal * 100) / 100,
+    "R$/TON Forecast": Math.round(r.rtonFc * 100) / 100,
+    "R$/TON Budget": Math.round(r.rtonBud * 100) / 100,
+  })), [rtonRows]);
+  const volumeChart = useMemo(() => rtonRows.map((r) => ({
+    name: r.name,
+    "Volume Real": Math.round(r.volReal),
+    "Volume Forecast": Math.round(r.volFc),
+    "Volume Budget": Math.round(r.volBud),
+  })), [rtonRows]);
 
   // Principais contas
   const topAccounts = useMemo(() => {

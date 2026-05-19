@@ -596,8 +596,8 @@ export default function Dashboard() {
             <div className="grid lg:grid-cols-2 gap-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Volume (TON) — Mai/26</CardTitle>
-                  <CardDescription>Forecast vs Budget por unidade</CardDescription>
+                  <CardTitle>Volume (kg) — {periodLabel}</CardTitle>
+                  <CardDescription>Real, Forecast e Budget por unidade</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -607,6 +607,7 @@ export default function Dashboard() {
                       <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
                       <Tooltip formatter={(v: number) => fmtNum(v)} />
                       <Legend />
+                      <Bar dataKey="Volume Real" fill="#2563eb" />
                       <Bar dataKey="Volume Forecast" fill="#16a34a" />
                       <Bar dataKey="Volume Budget" fill="#94a3b8" />
                     </BarChart>
@@ -615,8 +616,8 @@ export default function Dashboard() {
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>R$/TON — Mai/26</CardTitle>
-                  <CardDescription>Custo unitário por unidade</CardDescription>
+                  <CardTitle>R$/TON — {periodLabel}</CardTitle>
+                  <CardDescription>Custo unitário = (Custo ÷ Volume) × 1000</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -626,7 +627,8 @@ export default function Dashboard() {
                       <YAxis tick={{ fontSize: 11 }} />
                       <Tooltip formatter={(v: number) => `R$ ${fmtNum(v, 2)}`} />
                       <Legend />
-                      <Bar dataKey="R$/TON Forecast" fill="#2563eb" />
+                      <Bar dataKey="R$/TON Real" fill="#2563eb" />
+                      <Bar dataKey="R$/TON Forecast" fill="#16a34a" />
                       <Bar dataKey="R$/TON Budget" fill="#f59e0b" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -636,37 +638,40 @@ export default function Dashboard() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Tabela detalhada — Volume, Custos e R$/TON</CardTitle>
+                <CardTitle>Tabela detalhada — Volume, Custos e R$/TON ({periodLabel})</CardTitle>
+                <CardDescription>Filtrada por unidade e período selecionados no topo</CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="text-xs uppercase text-muted-foreground border-b">
                     <tr>
                       <th className="text-left py-2 px-2">Unidade</th>
-                      <th className="text-right py-2 px-2">Vol. FC Mai</th>
-                      <th className="text-right py-2 px-2">Vol. Bud Mai</th>
-                      <th className="text-right py-2 px-2">Custo FC Mai</th>
-                      <th className="text-right py-2 px-2">Custo Bud Mai</th>
+                      <th className="text-right py-2 px-2">Vol. Real</th>
+                      <th className="text-right py-2 px-2">Vol. FC</th>
+                      <th className="text-right py-2 px-2">Vol. Bud</th>
+                      <th className="text-right py-2 px-2">Custo Real</th>
+                      <th className="text-right py-2 px-2">Custo FC</th>
+                      <th className="text-right py-2 px-2">Custo Bud</th>
+                      <th className="text-right py-2 px-2">R$/TON Real</th>
                       <th className="text-right py-2 px-2">R$/TON FC</th>
                       <th className="text-right py-2 px-2">R$/TON Bud</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {D.rton.volume.map((v, i) => {
-                      const c = D.rton.custos[i];
-                      const r = D.rton.rston[i];
-                      return (
-                        <tr key={i} className="border-b last:border-0">
-                          <td className="py-2 px-2 font-medium">{v.unit}</td>
-                          <td className="py-2 px-2 text-right tabular-nums">{fmtNum(v.forecast05)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtNum(v.budget05)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(c.forecast05)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtBRL(c.budget05)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums font-semibold">R$ {fmtNum(r.forecast05, 2)}</td>
-                          <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">R$ {fmtNum(r.budget05, 2)}</td>
-                        </tr>
-                      );
-                    })}
+                    {rtonRows.map((r, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="py-2 px-2 font-medium">{r.unit}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{fmtNum(r.volReal)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{fmtNum(r.volFc)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtNum(r.volBud)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(r.cReal)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(r.cFc)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{fmtBRL(r.cBud)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums font-semibold">R$ {fmtNum(r.rtonReal, 2)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">R$ {fmtNum(r.rtonFc, 2)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">R$ {fmtNum(r.rtonBud, 2)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </CardContent>

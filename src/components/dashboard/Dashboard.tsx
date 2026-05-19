@@ -351,12 +351,15 @@ export default function Dashboard() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" size="sm" onClick={async () => { await supabase.auth.signOut(); nav({ to: "/login" }); }}>
+              <LogOut className="h-3.5 w-3.5 mr-1" /> Sair
+            </Button>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard
             icon={DollarSign}
             label="Realizado YTD"
@@ -373,6 +376,10 @@ export default function Dashboard() {
             label="Desvio FC vs Bud" value={fmtBRL(variance)}
             tone={variance > 0 ? "bad" : "good"}
             hint={`${variancePct >= 0 ? "+" : ""}${fmtPct(variancePct)}`} />
+          <KpiCard icon={Scale}
+            label={`Atual vs Bud ${periodLabel}`} value={fmtBRL(atualVsBud)}
+            tone={atualVsBud > 0 ? "bad" : "good"}
+            hint={`${atualVsBudPct >= 0 ? "+" : ""}${fmtPct(atualVsBudPct)} · Real ${fmtBRL(sumRealPeriod)}`} />
           <KpiCard icon={AlertTriangle} label="Var. vs M-1" value={fmtBRL(sumM1)}
             tone={sumM1 > 0 ? "warn" : "good"} hint="ajuste do mês" />
         </section>

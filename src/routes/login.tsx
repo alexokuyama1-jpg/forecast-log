@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { isValidLactalisEmail, passwordIssues, isValidPassword, LACTALIS_DOMAIN } from "@/lib/auth-rules";
+import { setAdminSession } from "@/hooks/use-auth";
 import { Loader2, ShieldCheck, Mail, KeyRound } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
@@ -31,6 +32,14 @@ function LoginPage() {
   const [siLoading, setSiLoading] = useState(false);
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    const emailRaw = siEmail.trim().toLowerCase();
+    // Admin bypass
+    if (emailRaw === "admin@admin" && siPw === "Lactalis@2026") {
+      setAdminSession({ email: emailRaw, isAdmin: true });
+      toast.success("Bem-vindo, administrador!");
+      nav({ to: "/" });
+      return;
+    }
     if (!isValidLactalisEmail(siEmail)) {
       toast.error(`Use um e-mail ${LACTALIS_DOMAIN}`);
       return;
@@ -165,9 +174,6 @@ function LoginPage() {
             <ShieldCheck className="h-6 w-6 text-primary" />
           </div>
           <CardTitle className="text-2xl">Painel Lactalis</CardTitle>
-          <CardDescription>
-            Acesso restrito a colaboradores com e-mail <span className="font-mono">{LACTALIS_DOMAIN}</span>
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs value={tab} onValueChange={setTab} className="space-y-4">

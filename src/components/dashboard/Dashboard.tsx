@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity, Database, RotateCcw, Save, LogOut, Scale, CalendarRange } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type MMap = Record<string, number | null>;
 type CostRow = {

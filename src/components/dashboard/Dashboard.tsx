@@ -268,18 +268,18 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="mx-auto max-w-[1600px] px-6 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="mx-auto max-w-[1600px] px-3 sm:px-6 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
               {D.meta.company} · Forecast 2026 {admin && <Badge variant="secondary" className="ml-1">admin</Badge>}
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Painel de Forecast — Custos & Volume</h1>
-            <p className="text-sm text-muted-foreground">Análise multi-CD: realizado 25/26, forecast, budget, desvios e R$/TON</p>
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight">Painel de Forecast — Custos & Volume</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Análise multi-CD: realizado 25/26, forecast, budget, desvios e R$/TON</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Select value={unit} onValueChange={setUnit}>
-              <SelectTrigger className="w-[200px]"><SelectValue placeholder="Unidade" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Unidade" /></SelectTrigger>
               <SelectContent>
                 {units.map((u) => (
                   <SelectItem key={u} value={u}>{u === "all" ? "Todas as unidades" : u}</SelectItem>
@@ -287,7 +287,7 @@ export default function Dashboard() {
               </SelectContent>
             </Select>
             <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[220px]"><CalendarRange className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Período" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[220px]"><CalendarRange className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Período" /></SelectTrigger>
               <SelectContent className="max-h-[440px]">
                 <div className="px-2 py-1 text-[10px] uppercase text-muted-foreground">Mês</div>
                 {PERIODS.filter((p) => p.value.startsWith("m")).map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
@@ -304,8 +304,8 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <main className="mx-auto max-w-[1600px] px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+        <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
           <KpiCard icon={DollarSign} label={`Realizado 26 — ${periodLabel}`} value={fmtBRL(sumReal26)} hint={months.length ? `${months.length} mês(es)` : "sem real no período"} />
           <KpiCard icon={Target}     label={`Forecast — ${periodLabel}`}      value={fmtBRL(sumFC)} />
           <KpiCard icon={Activity}   label={`Budget — ${periodLabel}`}        value={fmtBRL(sumBud)} />
@@ -323,13 +323,13 @@ export default function Dashboard() {
         </section>
 
         <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid grid-cols-3 md:grid-cols-6 w-full md:w-auto">
-            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-            <TabsTrigger value="pacotes">Pacotes</TabsTrigger>
-            <TabsTrigger value="desvios">Desvios</TabsTrigger>
-            <TabsTrigger value="unidades">Unidades</TabsTrigger>
-            <TabsTrigger value="rston">Volume & R$/TON</TabsTrigger>
-            <TabsTrigger value="base">Base de Dados</TabsTrigger>
+          <TabsList className="grid grid-cols-3 md:grid-cols-6 w-full md:w-auto h-auto gap-1">
+            <TabsTrigger value="overview" className="text-[11px] sm:text-sm whitespace-normal h-auto py-1.5 leading-tight">Visão Geral</TabsTrigger>
+            <TabsTrigger value="pacotes" className="text-[11px] sm:text-sm whitespace-normal h-auto py-1.5 leading-tight">Pacotes</TabsTrigger>
+            <TabsTrigger value="desvios" className="text-[11px] sm:text-sm whitespace-normal h-auto py-1.5 leading-tight">Desvios</TabsTrigger>
+            <TabsTrigger value="unidades" className="text-[11px] sm:text-sm whitespace-normal h-auto py-1.5 leading-tight">Unidades</TabsTrigger>
+            <TabsTrigger value="rston" className="text-[11px] sm:text-sm whitespace-normal h-auto py-1.5 leading-tight">Volume & R$/TON</TabsTrigger>
+            <TabsTrigger value="base" className="text-[11px] sm:text-sm whitespace-normal h-auto py-1.5 leading-tight">Base de Dados</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">

@@ -20,15 +20,15 @@ const toneClasses: Record<NonNullable<Props["tone"]>, string> = {
 export default function KpiCard({ icon: Icon, label, value, hint, tone = "neutral" }: Props) {
   return (
     <Card>
-      <CardContent className="p-4">
+      <CardContent className="p-3 sm:p-4">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground truncate">{label}</p>
-            <p className="text-2xl font-bold tracking-tight mt-1 tabular-nums">{value}</p>
-            {hint && <p className="text-xs text-muted-foreground mt-0.5 truncate">{hint}</p>}
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] sm:text-xs uppercase tracking-wide text-muted-foreground leading-tight break-words">{label}</p>
+            <p className="text-lg sm:text-2xl font-bold tracking-tight mt-1 tabular-nums break-words">{value}</p>
+            {hint && <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 break-words leading-tight">{hint}</p>}
           </div>
-          <div className={cn("rounded-md p-2 shrink-0", toneClasses[tone])}>
-            <Icon className="h-4 w-4" />
+          <div className={cn("rounded-md p-1.5 sm:p-2 shrink-0", toneClasses[tone])}>
+            <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </div>
         </div>
       </CardContent>

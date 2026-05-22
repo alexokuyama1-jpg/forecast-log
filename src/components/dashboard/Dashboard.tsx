@@ -263,6 +263,10 @@ export default function Dashboard() {
     nav({ to: "/login" });
   };
 
+  const isMobile = useIsMobile();
+  const chartH = isMobile ? 260 : 320;
+  const chartHMain = isMobile ? 300 : 380;
+
   if (authLoading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Carregando…</div>;
 
   return (
@@ -339,7 +343,7 @@ export default function Dashboard() {
                 <CardDescription>Custos agregados em R$ (filtro por unidade)</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={380}>
+                <ResponsiveContainer width="100%" height={chartHMain}>
                   <ComposedChart data={monthly}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
@@ -362,7 +366,7 @@ export default function Dashboard() {
                   <CardDescription>{periodLabel} — FC vs Budget vs Real 26</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={320}>
+                  <ResponsiveContainer width="100%" height={chartH}>
                     <BarChart data={unitTable}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                       <XAxis dataKey="unit" tick={{ fontSize: 11 }} />
@@ -382,9 +386,9 @@ export default function Dashboard() {
                   <CardDescription>Participação no forecast</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={320}>
+                  <ResponsiveContainer width="100%" height={chartH}>
                     <PieChart>
-                      <Pie data={pieByUnit} dataKey="value" nameKey="name" innerRadius={60} outerRadius={110} paddingAngle={2}>
+                      <Pie data={pieByUnit} dataKey="value" nameKey="name" innerRadius={isMobile ? 40 : 60} outerRadius={isMobile ? 80 : 110} paddingAngle={2}>
                         {pieByUnit.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                       </Pie>
                       <Tooltip formatter={(v: number) => fmtBRL(v)} />
@@ -403,11 +407,11 @@ export default function Dashboard() {
                 <CardDescription>Real 26, Forecast e Budget consolidados</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={Math.max(360, byPacote.length * 26)}>
-                  <BarChart data={byPacote.slice(0, 15)} layout="vertical" margin={{ left: 30 }}>
+                <ResponsiveContainer width="100%" height={Math.max(isMobile ? 320 : 360, byPacote.length * (isMobile ? 22 : 26))}>
+                  <BarChart data={byPacote.slice(0, 15)} layout="vertical" margin={{ left: isMobile ? 0 : 30 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                    <YAxis dataKey="name" type="category" width={210} tick={{ fontSize: 11 }} />
+                    <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis dataKey="name" type="category" width={isMobile ? 110 : 210} tick={{ fontSize: isMobile ? 9 : 11 }} />
                     <Tooltip formatter={(v: number) => fmtBRL(v)} />
                     <Legend />
                     <Bar dataKey="Realizado" fill="#2563eb" />
@@ -502,7 +506,7 @@ export default function Dashboard() {
                   <CardDescription>Por unidade (filtros aplicados)</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={isMobile ? 240 : 300}>
                     <BarChart data={volumeChart}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                       <XAxis dataKey="name" tick={{ fontSize: 11 }} />
@@ -522,7 +526,7 @@ export default function Dashboard() {
                   <CardDescription>Custo unitário = (Custo ÷ Volume) × 1000</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={isMobile ? 240 : 300}>
                     <BarChart data={rtonChart}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                       <XAxis dataKey="name" tick={{ fontSize: 11 }} />

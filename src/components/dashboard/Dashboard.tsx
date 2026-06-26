@@ -626,6 +626,9 @@ export default function Dashboard() {
                 </div>
                 <div className="flex gap-2">
                   <Badge variant="secondary" className="gap-1"><Save className="h-3 w-3" />Auto-salvo</Badge>
+                  <Button variant="outline" size="sm" onClick={handleDownloadTemplate}><FileDown className="h-3.5 w-3.5 mr-1" /> Baixar modelo</Button>
+                  <Button variant="default" size="sm" onClick={handleImportClick}><Upload className="h-3.5 w-3.5 mr-1" /> Importar Excel</Button>
+                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
                   <Button variant="outline" size="sm" onClick={resetAll}><RotateCcw className="h-3.5 w-3.5 mr-1" /> Restaurar original</Button>
                 </div>
               </CardHeader>

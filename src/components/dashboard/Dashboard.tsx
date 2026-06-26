@@ -148,6 +148,32 @@ export default function Dashboard() {
     setVolRows(JSON.parse(JSON.stringify(D.volume)));
   };
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const handleDownloadTemplate = () => {
+    try {
+      downloadTemplate(costRows, volRows);
+      toast.success("Modelo Excel baixado", { description: "Preencha e reimporte pelo botão 'Importar Excel'." });
+    } catch (e) {
+      toast.error("Falha ao gerar modelo", { description: String((e as Error).message) });
+    }
+  };
+  const handleImportClick = () => fileInputRef.current?.click();
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const { costRows: c, volRows: v, stats } = await importFromExcel(file, costRows, volRows);
+      setCostRows(c);
+      setVolRows(v);
+      toast.success("Base atualizada via Excel", {
+        description: `Custos: ${stats.costsUpdated} atualizados, ${stats.costsAdded} novos · Volume: ${stats.volsUpdated} atualizados, ${stats.volsAdded} novos${stats.skipped ? ` · ${stats.skipped} linhas ignoradas` : ""}`,
+      });
+    } catch (err) {
+      toast.error("Falha ao importar Excel", { description: String((err as Error).message) });
+    }
+  };
+
   // ============ KPIs (todos respeitam filtro unidade + período) ============
   const months = periodMonths;
   const sumReal26  = rowsFiltered.reduce((a, r) => a + sumMonths(r.real26, months), 0);

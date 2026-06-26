@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, setAdminSession } from "@/hooks/use-auth";
@@ -14,8 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity, Database, RotateCcw, Save, LogOut, Scale, CalendarRange } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Building2, Target, AlertTriangle, Activity, Database, RotateCcw, Save, LogOut, Scale, CalendarRange, FileDown, Upload } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { downloadTemplate, importFromExcel } from "@/lib/excel-io";
+import { toast } from "sonner";
 
 type MMap = Record<string, number | null>;
 type CostRow = {
@@ -144,6 +146,32 @@ export default function Dashboard() {
   const resetAll = () => {
     setCostRows(JSON.parse(JSON.stringify(D.rows)));
     setVolRows(JSON.parse(JSON.stringify(D.volume)));
+  };
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const handleDownloadTemplate = () => {
+    try {
+      downloadTemplate(costRows, volRows);
+      toast.success("Modelo Excel baixado", { description: "Preencha e reimporte pelo botão 'Importar Excel'." });
+    } catch (e) {
+      toast.error("Falha ao gerar modelo", { description: String((e as Error).message) });
+    }
+  };
+  const handleImportClick = () => fileInputRef.current?.click();
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const { costRows: c, volRows: v, stats } = await importFromExcel(file, costRows, volRows);
+      setCostRows(c);
+      setVolRows(v);
+      toast.success("Base atualizada via Excel", {
+        description: `Custos: ${stats.costsUpdated} atualizados, ${stats.costsAdded} novos · Volume: ${stats.volsUpdated} atualizados, ${stats.volsAdded} novos${stats.skipped ? ` · ${stats.skipped} linhas ignoradas` : ""}`,
+      });
+    } catch (err) {
+      toast.error("Falha ao importar Excel", { description: String((err as Error).message) });
+    }
   };
 
   // ============ KPIs (todos respeitam filtro unidade + período) ============
@@ -598,6 +626,9 @@ export default function Dashboard() {
                 </div>
                 <div className="flex gap-2">
                   <Badge variant="secondary" className="gap-1"><Save className="h-3 w-3" />Auto-salvo</Badge>
+                  <Button variant="outline" size="sm" onClick={handleDownloadTemplate}><FileDown className="h-3.5 w-3.5 mr-1" /> Baixar modelo</Button>
+                  <Button variant="default" size="sm" onClick={handleImportClick}><Upload className="h-3.5 w-3.5 mr-1" /> Importar Excel</Button>
+                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
                   <Button variant="outline" size="sm" onClick={resetAll}><RotateCcw className="h-3.5 w-3.5 mr-1" /> Restaurar original</Button>
                 </div>
               </CardHeader>

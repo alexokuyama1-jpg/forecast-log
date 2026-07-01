@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
-  Link,
   createRootRouteWithContext,
   useRouter,
 } from "@tanstack/react-router";
@@ -17,12 +16,12 @@ function NotFoundComponent() {
           A página que você procura não existe ou foi movida.
         </p>
         <div className="mt-6">
-          <Link
-            to="/"
+          
+            href="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Início
-          </Link>
+          </a>
         </div>
       </div>
     </div>

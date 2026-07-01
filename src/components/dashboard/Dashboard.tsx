@@ -746,7 +746,7 @@ export default function Dashboard() {
         </Tabs>
 
         <footer className="text-xs text-muted-foreground text-center pt-6">
-          Fonte: {D.meta.fileName} · {D.rows.length} linhas de custos · {D.volume.length} unidades de volume
+          Fonte: BASE_CUSTO_VOLUME.xlsx · {costRows.length} linhas de custos · {volRows.length} unidades de volume
         </footer>
       </main>
     </div>

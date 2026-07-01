@@ -283,7 +283,7 @@ export default function Dashboard() {
           <div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              {D.meta.company} · Forecast 2026 {admin && <Badge variant="secondary" className="ml-1">admin</Badge>}
+             Lactalis Brasil — PR · Forecast 2026 {admin && <Badge variant="secondary" className="ml-1">admin</Badge>}
             </div>
             <h1 className="text-lg sm:text-2xl font-bold tracking-tight">Painel de Forecast — Custos & Volume</h1>
             <p className="text-xs sm:text-sm text-muted-foreground">Análise multi-CD: realizado 25/26, forecast, budget, desvios e R$/TON</p>

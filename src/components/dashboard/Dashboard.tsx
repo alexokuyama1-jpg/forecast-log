@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, setAdminSession } from "@/hooks/use-auth";
-import data from "@/data/forecast.json";
+import { useForecastData } from "@/hooks/use-forecast-data";
 import KpiCard from "./KpiCard";
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, ComposedChart,
@@ -20,18 +20,7 @@ import { downloadTemplate, importFromExcel } from "@/lib/excel-io";
 import { toast } from "sonner";
 
 type MMap = Record<string, number | null>;
-type CostRow = {
-  unit: string; pacote: string; subpacote: string | null;
-  real25: MMap; real26: MMap; budget26: MMap; forecast26: MMap;
-};
-type VolRow = { unit: string; real25: MMap; real26: MMap; budget26: MMap; forecast26: MMap };
 type Field = "real25" | "real26" | "budget26" | "forecast26";
-
-const D = data as unknown as {
-  meta: { company: string; title: string; fileName: string };
-  rows: CostRow[];
-  volume: VolRow[];
-};
 
 const fmtBRL = (v: number | null | undefined) =>
   v == null || isNaN(v as number) ? "—" :
@@ -59,23 +48,14 @@ export default function Dashboard() {
     if (!authLoading && !authed) nav({ to: "/login" });
   }, [authLoading, authed, nav]);
 
-  // ============ Editable data with localStorage ============
-  const COST_KEY = "lactalis.costs.v3";
-  const VOL_KEY = "lactalis.volume.v3";
-  const [costRows, setCostRows] = useState<CostRow[]>(() => {
-    if (typeof window !== "undefined") {
-      try { const s = localStorage.getItem(COST_KEY); if (s) return JSON.parse(s); } catch {}
-    }
-    return JSON.parse(JSON.stringify(D.rows));
-  });
-  const [volRows, setVolRows] = useState<VolRow[]>(() => {
-    if (typeof window !== "undefined") {
-      try { const s = localStorage.getItem(VOL_KEY); if (s) return JSON.parse(s); } catch {}
-    }
-    return JSON.parse(JSON.stringify(D.volume));
-  });
-  useEffect(() => { try { localStorage.setItem(COST_KEY, JSON.stringify(costRows)); } catch {} }, [costRows]);
-  useEffect(() => { try { localStorage.setItem(VOL_KEY, JSON.stringify(volRows)); } catch {} }, [volRows]);
+  // ============ Editable data, persistido no Supabase ============
+  const {
+    costRows, setCostRows,
+    volRows, setVolRows,
+    loading: dataLoading,
+    saveStatus,
+    resetToServer,
+  } = useForecastData();
 
   const units = useMemo(() => ["all", ...Array.from(new Set(costRows.map((r) => r.unit)))], [costRows]);
   const [unit, setUnit] = useState<string>("all");
@@ -144,8 +124,7 @@ export default function Dashboard() {
     });
   };
   const resetAll = () => {
-    setCostRows(JSON.parse(JSON.stringify(D.rows)));
-    setVolRows(JSON.parse(JSON.stringify(D.volume)));
+    resetToServer();
   };
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -295,7 +274,7 @@ export default function Dashboard() {
   const chartH = isMobile ? 260 : 320;
   const chartHMain = isMobile ? 300 : 380;
 
-  if (authLoading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Carregando…</div>;
+  if (authLoading || (authed && dataLoading)) return <div className="min-h-screen grid place-items-center text-muted-foreground">Carregando…</div>;
 
   return (
     <div className="min-h-screen bg-background">
@@ -625,8 +604,11 @@ export default function Dashboard() {
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
-                  <Badge variant="secondary" className="gap-1"><Save className="h-3 w-3" />Auto-salvo</Badge>
-                  <Button variant="outline" size="sm" onClick={handleDownloadTemplate}><FileDown className="h-3.5 w-3.5 mr-1" /> Baixar modelo</Button>
+                  <Badge variant={saveStatus === "error" ? "destructive" : "secondary"} className="gap-1">
+                    <Save className="h-3 w-3" />
+                    {saveStatus === "saving" ? "Salvando…" : saveStatus === "error" ? "Erro ao salvar" : "Auto-salvo"}
+                  </Badge>
+                  <Button variant="outline" size="sm" onClick={resetAll}><RotateCcw className="h-3.5 w-3.5 mr-1" /> Recarregar do servidor</Button>
                   <Button variant="default" size="sm" onClick={handleImportClick}><Upload className="h-3.5 w-3.5 mr-1" /> Importar Excel</Button>
                   <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
                   <Button variant="outline" size="sm" onClick={resetAll}><RotateCcw className="h-3.5 w-3.5 mr-1" /> Restaurar original</Button>

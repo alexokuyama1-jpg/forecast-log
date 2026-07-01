@@ -12,7 +12,6 @@ import { setAdminSession } from "@/hooks/use-auth";
 import { Loader2, ShieldCheck, Mail, KeyRound } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
-  head: () => ({ meta: [{ title: "Acessar painel — Lactalis" }] }),
   component: LoginPage,
 });
 

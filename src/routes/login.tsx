@@ -237,25 +237,26 @@ function LoginPage() {
             </TabsContent>
 
             <TabsContent value="verify">
-              <form onSubmit={onVerify} className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="vf-email"><Mail className="h-3.5 w-3.5 inline mr-1" />E-mail</Label>
-                  <Input id="vf-email" type="email" value={vfEmail} onChange={(e) => setVfEmail(e.target.value)} required />
+              <div className="space-y-4 text-center py-2">
+                <div className="mx-auto rounded-full bg-primary/10 p-3 w-fit">
+                  <Mail className="h-6 w-6 text-primary" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="vf-code"><KeyRound className="h-3.5 w-3.5 inline mr-1" />Código de 6 dígitos</Label>
-                  <Input id="vf-code" inputMode="numeric" maxLength={6} pattern="\d{6}"
-                    value={vfCode} onChange={(e) => setVfCode(e.target.value.replace(/\D/g, ""))}
-                    className="text-center tracking-[0.5em] text-lg font-mono" required />
+                <div className="space-y-1">
+                  <p className="font-semibold text-sm">Verifique seu e-mail</p>
+                  <p className="text-sm text-muted-foreground">
+                    Enviamos um link de confirmação para <span className="font-medium text-foreground">{vfEmail}</span>.
+                    Abra o e-mail e clique em <strong>"Confirm email address"</strong> para ativar sua conta.
+                  </p>
                 </div>
-                <Button type="submit" className="w-full" disabled={vfLoading}>
-                  {vfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Validar código"}
-                </Button>
+                <p className="text-xs text-muted-foreground">Não recebeu? Verifique sua caixa de spam.</p>
                 <button type="button" onClick={onResend}
-                  className="text-xs text-muted-foreground hover:text-primary block mx-auto">
-                  Reenviar código
+                  className="text-xs text-muted-foreground hover:text-primary block mx-auto underline">
+                  Reenviar e-mail de confirmação
                 </button>
-              </form>
+                <Button variant="outline" className="w-full" onClick={() => setTab("signin")}>
+                  Voltar para o login
+                </Button>
+              </div>
             </TabsContent>
 
             <TabsContent value="recover">

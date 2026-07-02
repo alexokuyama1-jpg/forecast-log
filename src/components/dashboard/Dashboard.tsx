@@ -79,6 +79,17 @@ export default function Dashboard() {
     { value: "h2", label: "2º Semestre", months: [7, 8, 9, 10, 11, 12] },
     { value: "ytd", label: "YTD (Real)", months: [] },
     { value: "fy", label: "Ano 2026", months: [1,2,3,4,5,6,7,8,9,10,11,12] },
+    { value: "cmp12", label: "Comp. Jan vs Fev", months: [1, 2] },
+    { value: "cmp23", label: "Comp. Fev vs Mar", months: [2, 3] },
+    { value: "cmp34", label: "Comp. Mar vs Abr", months: [3, 4] },
+    { value: "cmp45", label: "Comp. Abr vs Mai", months: [4, 5] },
+    { value: "cmp56", label: "Comp. Mai vs Jun", months: [5, 6] },
+    { value: "cmp67", label: "Comp. Jun vs Jul", months: [6, 7] },
+    { value: "cmp78", label: "Comp. Jul vs Ago", months: [7, 8] },
+    { value: "cmp89", label: "Comp. Ago vs Set", months: [8, 9] },
+    { value: "cmp910", label: "Comp. Set vs Out", months: [9, 10] },
+    { value: "cmp1011", label: "Comp. Out vs Nov", months: [10, 11] },
+    { value: "cmp1112", label: "Comp. Nov vs Dez", months: [11, 12] },
   ], []);
 
   // YTD = meses com real26 preenchido
@@ -205,7 +216,8 @@ export default function Dashboard() {
     .map((r) => {
       const fc = sumMonths(r.forecast26, months);
       const bud = sumMonths(r.budget26, months);
-      return { unit: r.unit, pacote: r.pacote, subpacote: r.subpacote || "—", forecast: fc, budget: bud, delta: fc - bud };
+      const rl = sumMonths(r.real26, months);
+      return { unit: r.unit, pacote: r.pacote, subpacote: r.subpacote || "—", forecast: fc, budget: bud, real: rl, delta: fc - bud, deltaRealVsBud: rl - bud, deltaRealVsBudPct: bud ? (rl - bud) / bud : 0 };
     })
     .filter((r) => Math.abs(r.delta) > 1000)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
@@ -219,7 +231,12 @@ export default function Dashboard() {
       const fc  = rs.reduce((a, r) => a + sumMonths(r.forecast26, months), 0);
       const bud = rs.reduce((a, r) => a + sumMonths(r.budget26, months), 0);
       const r26 = rs.reduce((a, r) => a + sumMonths(r.real26, months), 0);
-      return { unit: u, forecast: fc, budget: bud, real: r26, delta: fc - bud, deltaPct: bud ? (fc - bud) / bud : 0 };
+      return {
+        unit: u, forecast: fc, budget: bud, real: r26,
+        delta: fc - bud, deltaPct: bud ? (fc - bud) / bud : 0,
+        deltaBudVsReal: r26 - bud, deltaBudVsRealPct: bud ? (r26 - bud) / bud : 0,
+        deltaFcVsReal: r26 - fc,  deltaFcVsRealPct:  fc  ? (r26 - fc)  / fc  : 0,
+      };
     });
   }, [costRows, months]);
 
@@ -447,8 +464,11 @@ export default function Dashboard() {
                       <th className="text-left py-2 px-2">Pacote</th>
                       <th className="text-left py-2 px-2">Subpacote</th>
                       <th className="text-right py-2 px-2">Budget</th>
+                      <th className="text-right py-2 px-2">Real</th>
+                      <th className="text-right py-2 px-2">Real vs Bud</th>
+                      <th className="text-right py-2 px-2">Var %</th>
                       <th className="text-right py-2 px-2">Forecast</th>
-                      <th className="text-right py-2 px-2">Desvio</th>
+                      <th className="text-right py-2 px-2">Desvio FC</th>
                       <th className="text-right py-2 px-2">%</th>
                     </tr>
                   </thead>
@@ -461,6 +481,15 @@ export default function Dashboard() {
                           <td className="py-2 px-2 text-muted-foreground">{d.pacote}</td>
                           <td className="py-2 px-2">{d.subpacote}</td>
                           <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(d.budget)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(d.real)}</td>
+                          <td className={`py-2 px-2 text-right tabular-nums font-semibold ${d.deltaRealVsBud > 0 ? "text-red-600" : "text-green-600"}`}>
+                            {d.deltaRealVsBud > 0 ? "+" : ""}{fmtBRL(d.deltaRealVsBud)}
+                          </td>
+                          <td className="py-2 px-2 text-right">
+                            <Badge variant={Math.abs(d.deltaRealVsBudPct * 100) > 50 ? "destructive" : "secondary"}>
+                              {d.deltaRealVsBudPct > 0 ? "+" : ""}{(d.deltaRealVsBudPct * 100).toFixed(0)}%
+                            </Badge>
+                          </td>
                           <td className="py-2 px-2 text-right tabular-nums">{fmtBRL(d.forecast)}</td>
                           <td className={`py-2 px-2 text-right tabular-nums font-semibold ${d.delta > 0 ? "text-red-600" : "text-green-600"}`}>
                             {d.delta > 0 ? "+" : ""}{fmtBRL(d.delta)}
@@ -494,9 +523,21 @@ export default function Dashboard() {
                     <div className="flex justify-between text-sm"><span className="text-muted-foreground">Forecast</span><span className="tabular-nums">{fmtBRL(u.forecast)}</span></div>
                     <div className="flex justify-between text-sm"><span className="text-muted-foreground">Budget</span><span className="tabular-nums">{fmtBRL(u.budget)}</span></div>
                     <div className="flex justify-between text-sm pt-2 border-t">
-                      <span className="text-muted-foreground">Desvio FC vs Bud</span>
+                      <span className="text-muted-foreground">FC vs Bud</span>
                       <Badge variant={u.delta > 0 ? "destructive" : "secondary"}>
                         {u.delta > 0 ? "+" : ""}{fmtBRL(u.delta)} ({fmtPct(u.deltaPct)})
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Bud vs Real</span>
+                      <Badge variant={u.deltaBudVsReal < 0 ? "destructive" : "secondary"}>
+                        {u.deltaBudVsReal > 0 ? "+" : ""}{fmtBRL(u.deltaBudVsReal)} ({fmtPct(u.deltaBudVsRealPct)})
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">FC vs Real</span>
+                      <Badge variant={u.deltaFcVsReal < 0 ? "destructive" : "secondary"}>
+                        {u.deltaFcVsReal > 0 ? "+" : ""}{fmtBRL(u.deltaFcVsReal)} ({fmtPct(u.deltaFcVsRealPct)})
                       </Badge>
                     </div>
                   </CardContent>
